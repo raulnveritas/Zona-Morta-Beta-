@@ -6,8 +6,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig(() => {
   return {
-    // GitHub Pages serves project sites below /<repository-name>/.
-    base: '/Zona-Morta-Beta-/',
+    // Relative asset URLs work on Netlify and other subpath deployments.
+    base: './',
     plugins: [
       react(),
       tailwindcss(),
