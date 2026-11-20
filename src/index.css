@@ -1,0 +1,116 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    box-sizing: border-box;
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+  }
+
+  html,
+  body,
+  #root {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: #090a11;
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+}
+
+.font-pixel {
+  font-family: 'Press Start 2P', monospace;
+}
+
+.font-mono-num {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.pixel-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.crt-scanlines {
+  background:
+    linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.18) 50%),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+  background-size: 100% 3px, 6px 100%;
+}
+
+.snes-frame {
+  background: linear-gradient(180deg, #181e32 0%, #0e121f 100%);
+  border: 3px solid #e6ecf5;
+  box-shadow:
+    inset 0 0 0 2px #364264,
+    0 10px 0 #05070d,
+    0 20px 44px rgba(0, 0, 0, 0.88);
+  border-radius: 6px;
+}
+
+.snes-btn {
+  font-family: 'Press Start 2P', monospace;
+  border: 2px solid #ffffff;
+  box-shadow: 0 4px 0 #090b12;
+  transition: transform 80ms cubic-bezier(0.16, 1, 0.3, 1), filter 120ms ease;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.snes-btn:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.snes-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #090b12;
+}
+
+.snes-btn-green {
+  background: linear-gradient(180deg, #38b764 0%, #236e48 100%);
+  color: #ffffff;
+  text-shadow: 2px 2px 0 #0e291c;
+}
+
+.snes-btn-red {
+  background: linear-gradient(180deg, #e43b44 0%, #a22633 100%);
+  color: #ffffff;
+  text-shadow: 2px 2px 0 #450d13;
+}
+
+.snes-btn-blue {
+  background: linear-gradient(180deg, #3b5dc9 0%, #243678 100%);
+  color: #e6efff;
+  text-shadow: 1px 1px 0 #0d1533;
+}
+
+.snes-btn-active {
+  border-color: #ffcd75;
+  background: linear-gradient(180deg, #4b7cf3 0%, #2b479e 100%);
+  box-shadow: 0 0 14px rgba(115, 239, 247, 0.4), 0 4px 0 #090b12;
+  color: #ffffff;
+}
+
+.snes-btn-amber {
+  background: linear-gradient(180deg, #f79222 0%, #b84a14 100%);
+  color: #ffffff;
+  text-shadow: 2px 2px 0 #3d1605;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .snes-btn {
+    transition: none;
+  }
+}

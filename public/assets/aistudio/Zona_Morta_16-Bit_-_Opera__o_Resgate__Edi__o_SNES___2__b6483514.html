@@ -1,0 +1,2564 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zona Morta 16-Bit: Operação Resgate (SNES)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #0d0d12;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+            color: #f8f8f8;
+            touch-action: manipulation;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #0d0d12;
+            font-family: 'Press Start 2P', monospace;
+            overflow: hidden;
+            color: #f8f8f8;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            cursor: crosshair;
+        }
+        /* Efeito Scanlines CRT sutil estilo Super Nintendo */
+        .crt-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.22) 50%
+            ), linear-gradient(
+                90deg,
+                rgba(255, 0, 0, 0.03),
+                rgba(0, 255, 0, 0.01),
+                rgba(0, 0, 255, 0.03)
+            );
+            background-size: 100% 3px, 6px 100%;
+            pointer-events: none;
+            z-index: 40;
+        }
+        /* Estilo de Borda e Botões 16-Bit */
+        .snes-box {
+            background: #1a1c2c;
+            border: 4px solid #f4f4f4;
+            box-shadow: 
+                inset 0 0 0 4px #333c57,
+                0 8px 0 #090a0f;
+            border-radius: 6px;
+        }
+        .snes-btn {
+            background: linear-gradient(180deg, #e43b44 0%, #a22633 100%);
+            border: 3px solid #ffffff;
+            box-shadow: 0 4px 0 #5a1219, inset 0 2px 0 rgba(255,255,255,0.4);
+            color: #fff;
+            text-shadow: 2px 2px 0 #26070a;
+            transition: transform 0.08s, filter 0.1s;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .snes-btn:hover {
+            filter: brightness(1.15);
+            transform: translateY(-1px);
+        }
+        .snes-btn:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #5a1219;
+        }
+        .snes-btn-blue {
+            background: linear-gradient(180deg, #3b5dc9 0%, #29366f 100%);
+            box-shadow: 0 4px 0 #141b38, inset 0 2px 0 rgba(255,255,255,0.4);
+            text-shadow: 2px 2px 0 #0c1024;
+        }
+        .snes-btn-green {
+            background: linear-gradient(180deg, #38b764 0%, #257179 100%);
+            box-shadow: 0 4px 0 #12383c, inset 0 2px 0 rgba(255,255,255,0.4);
+            text-shadow: 2px 2px 0 #0b2224;
+        }
+        .snes-btn-active {
+            outline: 3px solid #ffcd75;
+            filter: brightness(1.2);
+        }
+        @keyframes blink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0.2; }
+        }
+        .blink-text {
+            animation: blink 1.1s infinite;
+        }
+        /* Controles Virtuais Mobile */
+        .touch-pad {
+            background: rgba(26, 28, 44, 0.55);
+            border: 2px solid rgba(255, 255, 255, 0.35);
+            border-radius: 50%;
+            backdrop-filter: blur(2px);
+        }
+        .touch-btn {
+            background: rgba(228, 59, 68, 0.7);
+            border: 3px solid rgba(255, 255, 255, 0.75);
+            border-radius: 50%;
+            box-shadow: 0 4px 0 rgba(0,0,0,0.5);
+        }
+        .touch-btn:active {
+            transform: scale(0.92);
+            background: rgba(255, 90, 95, 0.9);
+        }
+    </style>
+</head>
+<body>
+    <!-- Overlay CRT retrô -->
+    <div class="crt-overlay"></div>
+
+    <!-- Canvas Principal do Jogo -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- Botão Flutuante de Áudio (Sempre acessível) -->
+    <button id="btnMute" class="fixed top-2 right-2 z-50 snes-btn snes-btn-blue px-2.5 py-2 text-[10px] sm:text-xs flex items-center gap-1" title="Alternar Som 16-Bit">
+        <span id="muteIcon">🔊</span> <span class="hidden sm:inline" id="muteText">SOM ON</span>
+    </button>
+
+    <!-- TELA INICIAL (ESTILO CARTUCHO SUPER NINTENDO) -->
+    <div id="startScreen" class="fixed inset-0 z-30 flex items-start sm:items-center justify-center p-3 sm:p-4 pt-12 sm:pt-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+        <div class="snes-box max-w-xl w-full p-4 sm:p-7 text-center relative overflow-hidden">
+            <!-- BOTÃO PRESS START NO TOPO (IMEDIATO E VISÍVEL) -->
+            <div class="mb-4 pb-3 border-b-2 border-[#333c57]">
+                <button type="button" id="btnStart" onclick="window.startGameSafe && window.startGameSafe()" class="snes-btn snes-btn-green w-full py-3.5 sm:py-4 text-xs sm:text-base tracking-wider">
+                    <span class="blink-text">▶ PRESS START (COMEÇAR)</span>
+                </button>
+            </div>
+
+            <!-- Faixa decorativa estilo Super Famicom / SNES -->
+            <div class="flex justify-center gap-2 mb-3">
+                <span class="w-3.5 h-3.5 rounded-full bg-[#e43b44] inline-block border border-white"></span>
+                <span class="w-3.5 h-3.5 rounded-full bg-[#ffcd75] inline-block border border-white"></span>
+                <span class="w-3.5 h-3.5 rounded-full bg-[#38b764] inline-block border border-white"></span>
+                <span class="w-3.5 h-3.5 rounded-full bg-[#3b5dc9] inline-block border border-white"></span>
+            </div>
+
+            <p class="text-[9px] sm:text-xs text-[#ffcd75] tracking-widest mb-1.5">SUPER 16-BIT ENTERTAINMENT SYSTEM</p>
+            <h1 class="text-2xl sm:text-4xl text-[#e43b44] leading-snug mb-1" style="text-shadow: 3px 3px 0 #000, -1px -1px 0 #ffcd75;">
+                ZONA MORTA
+            </h1>
+            <h2 class="text-xs sm:text-base text-[#73eff7] mb-4" style="text-shadow: 2px 2px 0 #000;">
+                OPERAÇÃO RESGATE
+            </h2>
+
+            <!-- Seleção de Dificuldade -->
+            <div class="mb-4">
+                <p class="text-[9px] sm:text-[10px] text-[#ffcd75] mb-2">DIFICULDADE DA MISSÃO:</p>
+                <div class="grid grid-cols-3 gap-2 sm:gap-3">
+                    <button class="diff-btn snes-btn snes-btn-blue py-2 text-[9px] sm:text-[10px]" data-diff="easy">RECRUTA</button>
+                    <button class="diff-btn snes-btn snes-btn-blue snes-btn-active py-2 text-[9px] sm:text-[10px]" data-diff="normal">SOLDADO</button>
+                    <button class="diff-btn snes-btn snes-btn-blue py-2 text-[9px] sm:text-[10px]" data-diff="hard">PESADELO</button>
+                </div>
+            </div>
+
+            <!-- Briefing da Missão -->
+            <div class="bg-[#0f111a] border-2 border-[#333c57] p-3 sm:p-4 rounded text-left text-[8px] sm:text-[10px] leading-relaxed text-[#c0cbdc] space-y-2">
+                <p><span class="text-[#ffcd75]">OPERAÇÃO EM 2 FASES:</span> Comece apenas com a <span class="text-[#73eff7]">PISTOLA</span>, explore a cidade para descobrir <span class="text-[#ffcd75]">CAIXAS DE ARMAS</span> e use sua lanterna tática na escuridão.</p>
+                <p><span class="text-[#38b764]">OBJETIVO:</span> Resgate os sobreviventes e alcance o <span class="text-[#ffcd75]">HELICÓPTERO</span> na Fase 1 (Entardecer) e Fase 2 (Noite em Chamas)!</p>
+                <div class="border-t border-[#333c57] pt-2 grid grid-cols-1 sm:grid-cols-2 gap-1 text-[8px] sm:text-[9px] text-[#94b0c2]">
+                    <div>[WASD / SETAS] Mover</div>
+                    <div>[MOUSE / ESPAÇO] Mirar e Atirar</div>
+                    <div>[1..4 ou Q] Trocar Arma</div>
+                    <div>[R] Recarregar | [E] Embarcar</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TELA DE TRANSIÇÃO DE FASE (FASE 1 -> FASE 2) -->
+    <div id="stageClearScreen" class="hidden fixed inset-0 z-30 flex items-start sm:items-center justify-center p-3 sm:p-4 pt-12 sm:pt-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
+        <div class="snes-box max-w-lg w-full p-5 sm:p-6 text-center">
+            <button type="button" id="btnNextStage" onclick="window.startStageTwoSafe && window.startStageTwoSafe()" class="snes-btn snes-btn-blue w-full py-3.5 text-xs sm:text-sm mb-4">
+                ▶ AVANÇAR PARA FASE 2 (NOITE)
+            </button>
+            <p class="text-[10px] text-[#73eff7] mb-1">SETOR 01 EVACUADO!</p>
+            <h2 class="text-xl sm:text-2xl text-[#ffcd75] mb-3" style="text-shadow: 3px 3px 0 #000;">FASE 1 CONCLUÍDA</h2>
+            <p class="text-[9px] sm:text-[10px] text-[#c0cbdc] leading-relaxed mb-4">
+                O helicóptero reabasteceu e seguiu para a <span class="text-[#e43b44]">ZONA HOSPITALAR (NOITE)</span>. Suas armas descobertas foram mantidas!
+            </p>
+            <div class="bg-[#0f111a] border-2 border-[#333c57] p-3.5 rounded text-[10px] sm:text-xs space-y-2 text-left">
+                <div class="flex justify-between"><span>SOBREVIVENTES SALVOS:</span><span id="scRescued" class="text-[#38b764]">0/0</span></div>
+                <div class="flex justify-between"><span>ZUMBIS ELIMINADOS:</span><span id="scKills" class="text-[#e43b44]">0</span></div>
+                <div class="flex justify-between"><span>PONTUAÇÃO ACUMULADA:</span><span id="scScore" class="text-[#ffcd75]">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TELA DE GAME OVER -->
+    <div id="gameOverScreen" class="hidden fixed inset-0 z-30 flex items-start sm:items-center justify-center p-3 sm:p-4 pt-12 sm:pt-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
+        <div class="snes-box max-w-md w-full p-5 sm:p-6 text-center">
+            <button type="button" id="btnRetry" onclick="window.startGameSafe && window.startGameSafe()" class="snes-btn w-full py-3.5 text-xs sm:text-sm mb-4">
+                ↻ TENTAR NOVAMENTE
+            </button>
+            <h2 class="text-2xl sm:text-3xl text-[#e43b44] mb-3" style="text-shadow: 3px 3px 0 #000;">VOCÊ MORREU</h2>
+            <p class="text-[10px] sm:text-xs text-[#c0cbdc] leading-relaxed mb-4">
+                A horda dominou a zona de quarentena. Nenhum resgate foi concluído...
+            </p>
+            <div class="bg-[#0f111a] border-2 border-[#333c57] p-3.5 rounded text-[10px] sm:text-xs space-y-2 text-left">
+                <div class="flex justify-between"><span>ZUMBIS ELIMINADOS:</span><span id="goKills" class="text-[#e43b44]">0</span></div>
+                <div class="flex justify-between"><span>SOBREVIVENTES SALVOS:</span><span id="goRescued" class="text-[#38b764]">0/0</span></div>
+                <div class="flex justify-between"><span>PONTUAÇÃO FINAL:</span><span id="goScore" class="text-[#ffcd75]">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TELA DE VITÓRIA / RELATÓRIO DE EXTRAÇÃO -->
+    <div id="victoryScreen" class="hidden fixed inset-0 z-30 flex items-start sm:items-center justify-center p-3 sm:p-4 pt-12 sm:pt-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
+        <div class="snes-box max-w-lg w-full p-5 sm:p-6 text-center">
+            <button type="button" id="btnPlayAgain" onclick="window.startGameSafe && window.startGameSafe()" class="snes-btn snes-btn-green w-full py-3.5 text-xs sm:text-sm mb-4">
+                ▶ NOVA MISSÃO
+            </button>
+            <p class="text-[10px] text-[#38b764] mb-1">EXTRAÇÃO CONCLUÍDA!</p>
+            <h2 class="text-xl sm:text-3xl text-[#ffcd75] mb-3" style="text-shadow: 3px 3px 0 #000;">MISSÃO CUMPRIDA</h2>
+            
+            <div class="bg-[#0f111a] border-2 border-[#333c57] p-3.5 rounded text-[10px] sm:text-xs space-y-2 mb-4 text-left">
+                <div class="flex justify-between"><span>SOBREVIVENTES RESGATADOS:</span><span id="vicRescued" class="text-[#38b764]">0/0</span></div>
+                <div class="flex justify-between"><span>ZUMBIS ELIMINADOS:</span><span id="vicKills" class="text-[#e43b44]">0</span></div>
+                <div class="flex justify-between"><span>TEMPO DE OPERAÇÃO:</span><span id="vicTime" class="text-[#73eff7]">00:00</span></div>
+                <div class="flex justify-between border-t border-[#333c57] pt-2"><span>BÔNUS DE RESGATE:</span><span id="vicBonus" class="text-[#38b764]">+0</span></div>
+                <div class="flex justify-between text-xs sm:text-sm"><span>PONTUAÇÃO TOTAL:</span><span id="vicScore" class="text-[#ffcd75]">0</span></div>
+            </div>
+
+            <div>
+                <span class="text-[10px] text-[#94b0c2] block mb-1">CLASSIFICAÇÃO DA MISSÃO</span>
+                <div id="vicRank" class="text-4xl sm:text-5xl text-[#ffcd75] font-bold" style="text-shadow: 4px 4px 0 #a22633;">S</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTROLES VIRTUAIS PARA CELULAR / TOUCH -->
+    <div id="mobileControls" class="hidden fixed inset-0 pointer-events-none z-20">
+        <!-- Joystick Esquerdo (Movimento) -->
+        <div id="joystickZone" class="pointer-events-auto fixed bottom-6 left-6 w-32 h-32 touch-pad flex items-center justify-center">
+            <div id="joystickKnob" class="w-12 h-12 rounded-full bg-white/60 border-2 border-white shadow-lg"></div>
+        </div>
+        <!-- Botões Direitos (Atirar, Trocar Arma, Recarregar) -->
+        <div class="pointer-events-auto fixed bottom-6 right-6 flex flex-col items-end gap-3">
+            <div class="flex gap-3">
+                <button id="mBtnWeapon" class="touch-btn w-12 h-12 bg-[#3b5dc9]/80 text-[9px] flex items-center justify-center">ARMA</button>
+                <button id="mBtnReload" class="touch-btn w-12 h-12 bg-[#38b764]/80 text-[9px] flex items-center justify-center">REC</button>
+            </div>
+            <button id="mBtnFire" class="touch-btn w-20 h-20 text-xs flex items-center justify-center font-bold">ATIRAR</button>
+        </div>
+    </div>
+
+    <script>
+    /**
+     * ============================================================================
+     * ZONA MORTA 16-BIT: OPERAÇÃO RESGATE
+     * Motor Gráfico Pixel Art Procedural, Áudio Chiptune WebAudio e Lógica Top-Down
+     * ============================================================================
+     */
+
+    // --- 1. MOTOR DE ÁUDIO CHIPTUNE 16-BIT (WEB AUDIO API) ---
+    class SoundEngine16Bit {
+        constructor() {
+            this.ctx = null;
+            this.muted = false;
+            this.bgmInterval = null;
+            this.bgmStep = 0;
+            this.isPlayingBgm = false;
+        }
+
+        init() {
+            try {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) {
+                        this.ctx = new AudioCtx();
+                    }
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume().catch(() => {});
+                }
+            } catch (e) {
+                this.ctx = null;
+            }
+        }
+
+        toggleMute() {
+            this.muted = !this.muted;
+            if (this.muted) {
+                this.stopBGM();
+            } else if (gameState === 'PLAYING') {
+                this.startBGM();
+            }
+            return this.muted;
+        }
+
+        // Sintetizador básico de onda quadrada/triângulo/dente-de-serra
+        playTone(freq, type, duration, vol = 0.12, slideFreq = null) {
+            if (this.muted || !this.ctx) return;
+            try {
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, now);
+                if (slideFreq) {
+                    osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideFreq), now + duration);
+                }
+                gain.gain.setValueAtTime(vol, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start(now);
+                osc.stop(now + duration);
+            } catch (e) {}
+        }
+
+        // Ruído branco filtrado para tiros, explosões e hélice
+        playNoise(duration, vol = 0.15, filterFreq = 1000, filterType = 'lowpass') {
+            if (this.muted || !this.ctx) return;
+            try {
+                const now = this.ctx.currentTime;
+                const bufferSize = this.ctx.sampleRate * duration;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    data[i] = Math.random() * 2 - 1;
+                }
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = filterType;
+                filter.frequency.setValueAtTime(filterFreq, now);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(vol, now);
+                gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+                noise.start(now);
+            } catch (e) {}
+        }
+
+        sfxPistol() {
+            this.playNoise(0.09, 0.16, 1800, 'bandpass');
+            this.playTone(320, 'square', 0.07, 0.1, 70);
+        }
+
+        sfxShotgun() {
+            this.playNoise(0.24, 0.28, 950, 'lowpass');
+            this.playTone(160, 'sawtooth', 0.16, 0.18, 40);
+        }
+
+        sfxMachineGun() {
+            this.playNoise(0.06, 0.14, 2200, 'bandpass');
+            this.playTone(420, 'square', 0.05, 0.09, 110);
+        }
+
+        sfxExplosion() {
+            this.playNoise(0.55, 0.35, 450, 'lowpass');
+            this.playTone(110, 'sawtooth', 0.45, 0.25, 25);
+        }
+
+        sfxZombieGroan() {
+            const base = 75 + Math.random() * 35;
+            this.playTone(base, 'sawtooth', 0.28, 0.07, base * 0.65);
+        }
+
+        sfxHurt() {
+            this.playTone(190, 'sawtooth', 0.18, 0.2, 65);
+            this.playNoise(0.12, 0.15, 700);
+        }
+
+        sfxPickup() {
+            this.playTone(523.25, 'square', 0.07, 0.1);
+            setTimeout(() => this.playTone(659.25, 'square', 0.1, 0.1), 65);
+        }
+
+        sfxReload() {
+            this.playTone(280, 'triangle', 0.06, 0.12);
+            setTimeout(() => this.playTone(560, 'square', 0.08, 0.12), 110);
+        }
+
+        sfxRescue() {
+            // Fanfarra curta 16-bit de resgate
+            const notes = [523.25, 659.25, 783.99, 1046.5];
+            notes.forEach((n, idx) => {
+                setTimeout(() => this.playTone(n, 'square', 0.12, 0.13), idx * 75);
+            });
+        }
+
+        sfxHelpCall() {
+            this.playTone(680, 'triangle', 0.12, 0.06, 820);
+        }
+
+        sfxChopperBlade() {
+            this.playNoise(0.06, 0.06, 260, 'lowpass');
+        }
+
+        // Trilha sonora de tensão estilo SNES (linha de baixo + arpejo sombrio)
+        startBGM() {
+            if (this.muted || this.isPlayingBgm) return;
+            this.init();
+            if (!this.ctx) return;
+            this.isPlayingBgm = true;
+            this.bgmStep = 0;
+
+            // Linha de baixo estilo Zombies Ate My Neighbors / ação SNES (em Ré menor)
+            const bassLine = [
+                73.42, 73.42, 87.31, 73.42,  98.00, 98.00, 87.31, 65.41,
+                73.42, 73.42, 110.0, 98.00,  87.31, 82.41, 73.42, 65.41
+            ];
+            const leadLine = [
+                293.66, 0, 349.23, 0, 329.63, 293.66, 261.63, 0,
+                293.66, 0, 440.00, 415.30, 349.23, 0, 329.63, 261.63
+            ];
+
+            this.bgmInterval = setInterval(() => {
+                if (this.muted || gameState !== 'PLAYING') return;
+                const idx = this.bgmStep % bassLine.length;
+                // Baixo pulsante
+                this.playTone(bassLine[idx], 'triangle', 0.16, 0.085);
+                // Melodia de tensão
+                if (leadLine[idx] > 0 && this.bgmStep % 2 === 0) {
+                    this.playTone(leadLine[idx], 'square', 0.14, 0.035);
+                }
+                // Chimbal sutil
+                if (this.bgmStep % 2 === 1) {
+                    this.playNoise(0.03, 0.025, 4500, 'highpass');
+                }
+                this.bgmStep++;
+            }, 185);
+        }
+
+        stopBGM() {
+            this.isPlayingBgm = false;
+            if (this.bgmInterval) {
+                clearInterval(this.bgmInterval);
+                this.bgmInterval = null;
+            }
+        }
+    }
+
+    const sfx = new SoundEngine16Bit();
+
+    // --- 2. CONFIGURAÇÃO DO CANVAS E ESCALA PIXEL ART ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Canvas Offscreen para Iluminação e Sombras Dinâmicas 16-Bit
+    const lightCanvas = document.createElement('canvas');
+    const lightCtx = lightCanvas.getContext('2d');
+
+    // Escala lógica interna para manter o visual pixel art crocante independente do monitor
+    const PIXEL_SCALE = 2; 
+    let viewWidth = 640;
+    let viewHeight = 360;
+
+    function resizeCanvas() {
+        canvas.width = Math.floor(window.innerWidth / PIXEL_SCALE);
+        canvas.height = Math.floor(window.innerHeight / PIXEL_SCALE);
+        viewWidth = canvas.width;
+        viewHeight = canvas.height;
+        lightCanvas.width = viewWidth;
+        lightCanvas.height = viewHeight;
+        ctx.imageSmoothingEnabled = false;
+        lightCtx.imageSmoothingEnabled = false;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Detectar dispositivo touch para exibir controles virtuais
+    const isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+    if (isTouchDevice) {
+        document.getElementById('mobileControls').classList.remove('hidden');
+    }
+
+    // --- 3. CONSTANTES E PALETA 16-BIT SNES (Rica em Sombras e Relevo) ---
+    const PALETTE = {
+        asphalt: '#282d38',
+        asphaltDark: '#1f232c',
+        asphaltHighlight: '#363d4c',
+        asphaltCrack: '#13161c',
+        sidewalk: '#6c7687',
+        sidewalkLight: '#8b96a8',
+        sidewalkShadow: '#424957',
+        grass: '#264d2b',
+        grassLight: '#386e3e',
+        grassDark: '#19331c',
+        rubble: '#524943',
+        rubbleLight: '#7a6e65',
+        wallBrick: '#7a362e',
+        wallBrickDark: '#4f201b',
+        wallBrickLight: '#9e4b40',
+        wallTop: '#331c1e',
+        wallTopTrim: '#593336',
+        blood: '#7d141b',
+        bloodFresh: '#cf232e',
+        heliPad: '#363b45',
+        heliYellow: '#f2c12e'
+    };
+
+    const TILE_SIZE = 64;
+
+    const STAGES = {
+        1: {
+            number: 1,
+            name: 'FASE 1: DISTRITO CENTRAL',
+            subtitle: 'ENTARDECER SANGRENTO',
+            worldSize: 2500,
+            ambientLight: 'rgba(28, 18, 42, 0.56)', // Crepúsculo roxo-âmbar estilo SNES
+            baseZombies: 68,
+            maxZombies: 82,
+            survivors: 5,
+            crates: ['shotgun', 'smg', 'shotgun']
+        },
+        2: {
+            number: 2,
+            name: 'FASE 2: ZONA HOSPITALAR',
+            subtitle: 'NOITE EM CHAMAS',
+            worldSize: 3000,
+            ambientLight: 'rgba(8, 11, 24, 0.84)', // Noite profunda onde lanterna e fogo brilham
+            baseZombies: 105,
+            maxZombies: 125,
+            survivors: 7,
+            crates: ['shotgun', 'smg', 'flamethrower', 'flamethrower', 'smg']
+        }
+    };
+
+    const DIFFICULTIES = {
+        easy:   { label: 'RECRUTA',  zombieMult: 0.75, damageMult: 0.7 },
+        normal: { label: 'SOLDADO',  zombieMult: 1.0,  damageMult: 1.0 },
+        hard:   { label: 'PESADELO', zombieMult: 1.35, damageMult: 1.4 }
+    };
+
+    let currentDiff = 'normal';
+    let currentStageNum = 1;
+    let gameState = 'MENU'; // MENU, PLAYING, STAGECLEAR, GAMEOVER, VICTORY
+
+    // --- 4. ESTADO DO JOGO ---
+    let player = null;
+    let camera = { x: 0, y: 0, shake: 0 };
+    let zombies = [];
+    let survivors = [];
+    let bullets = [];
+    let particles = [];
+    let decals = [];
+    let pickups = [];
+    let obstacles = [];
+    let barrels = [];
+    let streetLamps = [];
+    let dynamicFlashes = [];
+    let helicopter = null;
+
+    let stats = {
+        score: 0,
+        kills: 0,
+        rescued: 0,
+        totalSurvivors: 5,
+        startTime: 0,
+        elapsedTime: 0
+    };
+
+    let floatingTexts = [];
+    let lastFrameTime = 0;
+    let globalTimer = 0;
+
+    // Definição das 4 Armas (Começa apenas com a Pistola desbloqueada!)
+    const WEAPONS = [
+        {
+            id: 'pistol',
+            name: 'PISTOLA 9MM',
+            shortName: 'PISTOLA',
+            color: '#73eff7',
+            fireRate: 0.23,
+            damage: 35,
+            speed: 450,
+            spread: 0.04,
+            count: 1,
+            infinite: true,
+            magSize: 12,
+            reloadTime: 0.85
+        },
+        {
+            id: 'shotgun',
+            name: 'ESCOPETA 12',
+            shortName: 'ESCOPETA',
+            color: '#ffcd75',
+            fireRate: 0.70,
+            damage: 30,
+            speed: 400,
+            spread: 0.28,
+            count: 6,
+            infinite: false,
+            magSize: 6,
+            reloadTime: 1.25
+        },
+        {
+            id: 'smg',
+            name: 'METRALHADORA',
+            shortName: 'METRALHA',
+            color: '#e43b44',
+            fireRate: 0.088,
+            damage: 22,
+            speed: 490,
+            spread: 0.11,
+            count: 1,
+            infinite: false,
+            magSize: 32,
+            reloadTime: 1.05
+        },
+        {
+            id: 'flamethrower',
+            name: 'LANÇA-CHAMAS',
+            shortName: 'CHAMAS',
+            color: '#f77622',
+            fireRate: 0.055,
+            damage: 15,
+            speed: 240,
+            spread: 0.24,
+            count: 2,
+            infinite: false,
+            magSize: 60,
+            reloadTime: 1.5
+        }
+    ];
+
+    // --- 5. GERAÇÃO PROCEDURAL DA CIDADE DESTRUÍDA (SNES 16-BIT) ---
+    function generateCityMap(stageNum = 1, carryOverPlayer = false) {
+        currentStageNum = stageNum;
+        const stageCfg = STAGES[stageNum];
+        const worldSize = stageCfg.worldSize;
+
+        obstacles = [];
+        barrels = [];
+        pickups = [];
+        decals = [];
+        survivors = [];
+        zombies = [];
+        bullets = [];
+        particles = [];
+        streetLamps = [];
+        dynamicFlashes = [];
+        floatingTexts = [];
+
+        // Preserva armas desbloqueadas e pontuação ao avançar da Fase 1 para Fase 2
+        const prevWeapons = (carryOverPlayer && player) ? player.weapons : [
+            { unlocked: true,  mag: 12, reserve: Infinity },
+            { unlocked: false, mag: 0,  reserve: 0 },
+            { unlocked: false, mag: 0,  reserve: 0 },
+            { unlocked: false, mag: 0,  reserve: 0 }
+        ];
+        const prevWeaponIdx = (carryOverPlayer && player) ? player.weaponIndex : 0;
+
+        if (!carryOverPlayer) {
+            stats = {
+                score: 0,
+                kills: 0,
+                rescued: 0,
+                totalSurvivors: stageCfg.survivors,
+                startTime: performance.now(),
+                elapsedTime: 0
+            };
+        } else {
+            stats.rescued = 0;
+            stats.totalSurvivors = stageCfg.survivors;
+        }
+
+        // Jogador inicia na Zona Sul da cidade
+        player = {
+            x: 340,
+            y: worldSize - 340,
+            radius: 10,
+            speed: 128,
+            hp: carryOverPlayer ? Math.min(100, player.hp + 40) : 100,
+            maxHp: 100,
+            angle: -Math.PI / 4,
+            animFrame: 0,
+            invulnTimer: 0,
+            weaponIndex: prevWeaponIdx,
+            weapons: prevWeapons,
+            fireCooldown: 0,
+            reloading: false,
+            reloadTimer: 0
+        };
+
+        // Helicóptero de extração no extremo Nordeste
+        helicopter = {
+            x: worldSize - 420,
+            y: 420,
+            radius: 36,
+            rotorAngle: 0,
+            searchlightAngle: 0,
+            bladeSoundTimer: 0
+        };
+
+        // Criar quarteirões com calçadas 16-bit, prédios em ruínas e postes de luz
+        const blockSpacing = 440;
+        for (let bx = 260; bx < worldSize - 320; bx += blockSpacing) {
+            for (let by = 260; by < worldSize - 320; by += blockSpacing) {
+                if (Math.hypot(bx - player.x, by - player.y) < 340) continue;
+                if (Math.hypot(bx - helicopter.x, by - helicopter.y) < 420) continue;
+
+                // Calçada elevada em volta do quarteirão
+                decals.push({
+                    type: 'sidewalk',
+                    x: bx - 22,
+                    y: by - 22,
+                    w: 214,
+                    h: 204
+                });
+
+                // Poste de luz na esquina da calçada (iluminação dinâmica)
+                streetLamps.push({
+                    x: bx - 16,
+                    y: by - 16,
+                    broken: Math.random() < (stageNum === 2 ? 0.35 : 0.2),
+                    flickerSeed: Math.random() * 100
+                });
+
+                const blockType = Math.random();
+                if (blockType < 0.74) {
+                    const w = 155 + Math.floor(Math.random() * 45);
+                    const h = 145 + Math.floor(Math.random() * 45);
+                    obstacles.push({
+                        type: 'building',
+                        x: bx,
+                        y: by,
+                        w: w,
+                        h: h,
+                        ruined: Math.random() > 0.3,
+                        hasAc: Math.random() > 0.4
+                    });
+
+                    for (let r = 0; r < 3; r++) {
+                        decals.push({
+                            type: 'rubble',
+                            x: bx + (Math.random() - 0.25) * (w + 50),
+                            y: by + (Math.random() - 0.25) * (h + 50),
+                            size: 10 + Math.random() * 14
+                        });
+                    }
+                } else {
+                    // Praça / Parque urbano devastado
+                    decals.push({
+                        type: 'park',
+                        x: bx - 14,
+                        y: by - 14,
+                        w: 198,
+                        h: 188
+                    });
+                    for (let t = 0; t < 4; t++) {
+                        obstacles.push({
+                            type: 'tree',
+                            x: bx + 18 + Math.random() * 125,
+                            y: by + 18 + Math.random() * 115,
+                            w: 24,
+                            h: 24
+                        });
+                    }
+                }
+            }
+        }
+
+        // Carros destruídos e incendiados nas ruas
+        const carColors = ['#b82535', '#3259b8', '#d9a31e', '#5d687a', '#2b7a44'];
+        const carCount = stageNum === 1 ? 32 : 42;
+        for (let i = 0; i < carCount; i++) {
+            const cx = 180 + Math.random() * (worldSize - 360);
+            const cy = 180 + Math.random() * (worldSize - 360);
+            if (Math.hypot(cx - player.x, cy - player.y) < 200) continue;
+            if (Math.hypot(cx - helicopter.x, cy - helicopter.y) < 260) continue;
+
+            const horizontal = Math.random() > 0.5;
+            const car = {
+                type: 'car',
+                x: cx,
+                y: cy,
+                w: horizontal ? 50 : 28,
+                h: horizontal ? 28 : 50,
+                horizontal,
+                color: carColors[Math.floor(Math.random() * carColors.length)],
+                burning: Math.random() < (stageNum === 2 ? 0.5 : 0.35)
+            };
+            if (!checkObstacleOverlap(car, 20)) {
+                obstacles.push(car);
+            }
+        }
+
+        // Barris Explosivos Vermelhos
+        const barrelCount = stageNum === 1 ? 26 : 36;
+        for (let i = 0; i < barrelCount; i++) {
+            const bx = 200 + Math.random() * (worldSize - 400);
+            const by = 200 + Math.random() * (worldSize - 400);
+            if (Math.hypot(bx - player.x, by - player.y) < 220) continue;
+            if (!pointInsideObstacle(bx, by, 18)) {
+                barrels.push({ x: bx, y: by, radius: 9, hp: 20 });
+            }
+        }
+
+        // Espalhar CAIXAS DE ARMAS para o jogador descobrir pelo mapa!
+        for (const weaponId of stageCfg.crates) {
+            let placed = false;
+            let tries = 0;
+            while (!placed && tries < 150) {
+                tries++;
+                const wx = 260 + Math.random() * (worldSize - 520);
+                const wy = 260 + Math.random() * (worldSize - 520);
+                if (Math.hypot(wx - player.x, wy - player.y) < 260) continue;
+                if (pointInsideObstacle(wx, wy, 20)) continue;
+                if (pickups.some(p => Math.hypot(p.x - wx, p.y - wy) < 240)) continue;
+
+                pickups.push({
+                    x: wx,
+                    y: wy,
+                    type: `crate_${weaponId}`,
+                    weaponId: weaponId,
+                    bob: Math.random() * Math.PI * 2
+                });
+
+                // Colocar 2 ou 3 zumbis guardando a caixa de arma
+                for (let g = 0; g < 3; g++) {
+                    const ang = (Math.PI * 2 / 3) * g;
+                    const zx = wx + Math.cos(ang) * 48;
+                    const zy = wy + Math.sin(ang) * 48;
+                    if (!pointInsideObstacle(zx, zy, 14)) {
+                        spawnZombie(zx, zy, 'walker');
+                    }
+                }
+                placed = true;
+            }
+        }
+
+        // Posicionar Sobreviventes cercados por zumbis
+        let placedSurvivors = 0;
+        let attempts = 0;
+        while (placedSurvivors < stageCfg.survivors && attempts < 350) {
+            attempts++;
+            const sx = 240 + Math.random() * (worldSize - 480);
+            const sy = 240 + Math.random() * (worldSize - 480);
+
+            if (Math.hypot(sx - player.x, sy - player.y) < 380) continue;
+            if (Math.hypot(sx - helicopter.x, sy - helicopter.y) < 260) continue;
+            if (pointInsideObstacle(sx, sy, 28)) continue;
+            if (survivors.some(s => Math.hypot(s.x - sx, s.y - sy) < 320)) continue;
+
+            const colors = ['#73eff7', '#ffcd75', '#ff77a8', '#a7f070', '#ffffff', '#f77622', '#c0cbdc'];
+            survivors.push({
+                x: sx,
+                y: sy,
+                radius: 10,
+                rescued: false,
+                animTimer: Math.random() * 10,
+                helpTimer: 2 + Math.random() * 4,
+                shirtColor: colors[placedSurvivors % colors.length]
+            });
+
+            // Grupo de zumbis cercando o sobrevivente
+            const guardCount = 4 + stageNum;
+            for (let g = 0; g < guardCount; g++) {
+                const ang = (Math.PI * 2 / guardCount) * g + Math.random() * 0.4;
+                const zx = sx + Math.cos(ang) * (62 + Math.random() * 45);
+                const zy = sy + Math.sin(ang) * (62 + Math.random() * 45);
+                if (!pointInsideObstacle(zx, zy, 14)) {
+                    spawnZombie(zx, zy, Math.random() < 0.35 ? 'runner' : 'walker');
+                }
+            }
+            placedSurvivors++;
+        }
+        stats.totalSurvivors = survivors.length;
+
+        // Espalhar HORDAS DENSAS de Zumbis pela cidade
+        for (let i = 0; i < stageCfg.baseZombies; i++) {
+            const zx = 160 + Math.random() * (worldSize - 320);
+            const zy = 160 + Math.random() * (worldSize - 320);
+            if (Math.hypot(zx - player.x, zy - player.y) < 280) continue;
+            if (pointInsideObstacle(zx, zy, 14)) continue;
+
+            const roll = Math.random();
+            let type = 'walker';
+            if (roll > 0.88) type = 'brute';
+            else if (roll > 0.74) type = 'toxic';
+            else if (roll > 0.52) type = 'runner';
+            spawnZombie(zx, zy, type);
+        }
+
+        // Espalhar Suprimentos (Kits Médicos e Munições)
+        const supplyTypes = ['medkit', 'shotgun_ammo', 'smg_ammo', 'flame_ammo'];
+        for (let i = 0; i < 32; i++) {
+            const px = 180 + Math.random() * (worldSize - 360);
+            const py = 180 + Math.random() * (worldSize - 360);
+            if (pointInsideObstacle(px, py, 16)) continue;
+            pickups.push({
+                x: px,
+                y: py,
+                type: supplyTypes[i % supplyTypes.length],
+                bob: Math.random() * Math.PI * 2
+            });
+        }
+
+        addFloatingText(player.x, player.y - 26, stageCfg.name, '#ffcd75');
+    }
+
+    function spawnZombie(x, y, type = 'walker') {
+        const mult = DIFFICULTIES[currentDiff].zombieMult;
+        const configs = {
+            walker: { hp: 55 * mult,  speed: 48 + Math.random() * 14, radius: 10, damage: 14, score: 100, color: '#4b7236' },
+            runner: { hp: 40 * mult,  speed: 92 + Math.random() * 18, radius: 9,  damage: 12, score: 150, color: '#9e3838' },
+            toxic:  { hp: 65 * mult,  speed: 54 + Math.random() * 12, radius: 10, damage: 18, score: 200, color: '#38b764' },
+            brute:  { hp: 175 * mult, speed: 36 + Math.random() * 8,  radius: 14, damage: 26, score: 350, color: '#4c3b78' }
+        };
+        const cfg = configs[type] || configs.walker;
+        zombies.push({
+            x, y,
+            type,
+            hp: cfg.hp,
+            maxHp: cfg.hp,
+            speed: cfg.speed,
+            radius: cfg.radius,
+            damage: cfg.damage * DIFFICULTIES[currentDiff].damageMult,
+            score: cfg.score,
+            color: cfg.color,
+            angle: Math.random() * Math.PI * 2,
+            animTimer: Math.random() * 10,
+            hitFlash: 0,
+            burnTimer: 0,
+            groanTimer: 2 + Math.random() * 8
+        });
+    }
+
+    // --- 6. AUXILIARES DE COLISÃO ---
+    function checkObstacleOverlap(rect, margin = 0) {
+        for (const obs of obstacles) {
+            if (rect.x - margin < obs.x + obs.w &&
+                rect.x + rect.w + margin > obs.x &&
+                rect.y - margin < obs.y + obs.h &&
+                rect.y + rect.h + margin > obs.y) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function pointInsideObstacle(x, y, radius = 10) {
+        const worldSize = STAGES[currentStageNum].worldSize;
+        if (x < radius + 32 || y < radius + 32 || x > worldSize - radius - 32 || y > worldSize - radius - 32) {
+            return true;
+        }
+        for (const obs of obstacles) {
+            const closestX = Math.max(obs.x, Math.min(x, obs.x + obs.w));
+            const closestY = Math.max(obs.y, Math.min(y, obs.y + obs.h));
+            const dx = x - closestX;
+            const dy = y - closestY;
+            if ((dx * dx + dy * dy) < (radius * radius)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function moveEntityWithSlide(entity, dx, dy) {
+        // Movimento separado em X e Y para deslizar suavemente nas paredes
+        const nextX = entity.x + dx;
+        if (!pointInsideObstacle(nextX, entity.y, entity.radius)) {
+            entity.x = nextX;
+        }
+        const nextY = entity.y + dy;
+        if (!pointInsideObstacle(entity.x, nextY, entity.radius)) {
+            entity.y = nextY;
+        }
+    }
+
+    // --- 7. CONTROLES (TECLADO, MOUSE E TOUCH) ---
+    const keys = {};
+    const mouse = { x: viewWidth / 2, y: viewHeight / 2, down: false, active: false };
+    const touchMove = { x: 0, y: 0, active: false };
+    let touchFiring = false;
+
+    window.addEventListener('keydown', (e) => {
+        keys[e.code] = true;
+
+        // Permite iniciar / avançar / reiniciar com Enter ou Espaço nas telas de menu
+        if (e.code === 'Enter' || e.code === 'Space') {
+            if (gameState === 'MENU' || gameState === 'GAMEOVER' || gameState === 'VICTORY') {
+                e.preventDefault();
+                startGame();
+                return;
+            } else if (gameState === 'STAGECLEAR') {
+                e.preventDefault();
+                startStageTwo();
+                return;
+            }
+        }
+
+        if (gameState !== 'PLAYING') return;
+
+        if (e.code === 'Digit1') switchWeapon(0);
+        if (e.code === 'Digit2') switchWeapon(1);
+        if (e.code === 'Digit3') switchWeapon(2);
+        if (e.code === 'Digit4') switchWeapon(3);
+        if (e.code === 'KeyQ') cycleUnlockedWeapon();
+        if (e.code === 'KeyR') triggerReload();
+        if (e.code === 'KeyE') checkRescueAndExtract(true);
+    });
+
+    window.addEventListener('keyup', (e) => {
+        keys[e.code] = false;
+    });
+
+    canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        mouse.x = (e.clientX - rect.left) / PIXEL_SCALE;
+        mouse.y = (e.clientY - rect.top) / PIXEL_SCALE;
+        mouse.active = true;
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+        if (e.button === 0) {
+            mouse.down = true;
+            mouse.active = true;
+        }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+        if (e.button === 0) mouse.down = false;
+    });
+
+    // Joystick e Botões Touch
+    const joyZone = document.getElementById('joystickZone');
+    const joyKnob = document.getElementById('joystickKnob');
+
+    joyZone.addEventListener('touchstart', handleJoyTouch, { passive: false });
+    joyZone.addEventListener('touchmove', handleJoyTouch, { passive: false });
+    joyZone.addEventListener('touchend', () => {
+        touchMove.x = 0;
+        touchMove.y = 0;
+        touchMove.active = false;
+        joyKnob.style.transform = 'translate(0px, 0px)';
+    });
+
+    function handleJoyTouch(e) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const rect = joyZone.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        let dx = touch.clientX - centerX;
+        let dy = touch.clientY - centerY;
+        const maxDist = 42;
+        const dist = Math.hypot(dx, dy);
+        if (dist > maxDist) {
+            dx = (dx / dist) * maxDist;
+            dy = (dy / dist) * maxDist;
+        }
+        joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+        touchMove.x = dx / maxDist;
+        touchMove.y = dy / maxDist;
+        touchMove.active = true;
+        mouse.active = false;
+    }
+
+    const mBtnFire = document.getElementById('mBtnFire');
+    mBtnFire.addEventListener('touchstart', (e) => { e.preventDefault(); touchFiring = true; });
+    mBtnFire.addEventListener('touchend', (e) => { e.preventDefault(); touchFiring = false; });
+
+    document.getElementById('mBtnWeapon').addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (gameState === 'PLAYING') cycleUnlockedWeapon();
+    });
+    document.getElementById('mBtnReload').addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (gameState === 'PLAYING') triggerReload();
+    });
+
+    // --- 8. MECÂNICAS DE COMBATE, DESCOBERTA DE ARMAS, EXPLOSÕES E RESGATE ---
+    function cycleUnlockedWeapon() {
+        for (let offset = 1; offset <= WEAPONS.length; offset++) {
+            const nextIdx = (player.weaponIndex + offset) % WEAPONS.length;
+            if (player.weapons[nextIdx].unlocked) {
+                switchWeapon(nextIdx);
+                return;
+            }
+        }
+    }
+
+    function switchWeapon(idx) {
+        if (!player.weapons[idx] || !player.weapons[idx].unlocked) {
+            addFloatingText(player.x, player.y - 18, 'ARMA BLOQUEADA!', '#94b0c2');
+            return;
+        }
+        if (player.weaponIndex === idx) return;
+        player.weaponIndex = idx;
+        player.reloading = false;
+        player.reloadTimer = 0;
+        sfx.sfxReload();
+        addFloatingText(player.x, player.y - 18, WEAPONS[idx].shortName, WEAPONS[idx].color);
+    }
+
+    function triggerReload() {
+        const wDef = WEAPONS[player.weaponIndex];
+        const wState = player.weapons[player.weaponIndex];
+        if (player.reloading) return;
+        if (wState.mag >= wDef.magSize) return;
+        if (!wDef.infinite && wState.reserve <= 0) {
+            addFloatingText(player.x, player.y - 18, 'SEM MUNIÇÃO!', '#e43b44');
+            return;
+        }
+        player.reloading = true;
+        player.reloadTimer = wDef.reloadTime;
+        sfx.sfxReload();
+        addFloatingText(player.x, player.y - 18, 'RECARREGANDO...', '#ffcd75');
+    }
+
+    function fireWeapon() {
+        if (player.reloading || player.fireCooldown > 0) return;
+
+        const wDef = WEAPONS[player.weaponIndex];
+        const wState = player.weapons[player.weaponIndex];
+
+        if (wState.mag <= 0) {
+            if (wDef.infinite || wState.reserve > 0) {
+                triggerReload();
+            } else {
+                switchWeapon(0);
+            }
+            return;
+        }
+
+        wState.mag--;
+        player.fireCooldown = wDef.fireRate;
+        camera.shake = Math.max(camera.shake, wDef.id === 'shotgun' ? 5 : (wDef.id === 'flamethrower' ? 1.5 : 2));
+
+        if (wDef.id === 'pistol') sfx.sfxPistol();
+        else if (wDef.id === 'shotgun') sfx.sfxShotgun();
+        else if (wDef.id === 'flamethrower') sfx.playNoise(0.09, 0.14, 650, 'lowpass');
+        else sfx.sfxMachineGun();
+
+        // Posição da boca da arma
+        const muzzleX = player.x + Math.cos(player.angle) * 14;
+        const muzzleY = player.y + Math.sin(player.angle) * 14;
+
+        // Clarão dinâmico de luz do disparo
+        dynamicFlashes.push({
+            x: muzzleX,
+            y: muzzleY,
+            radius: wDef.id === 'shotgun' ? 130 : (wDef.id === 'flamethrower' ? 110 : 85),
+            color: wDef.id === 'flamethrower' ? 'rgba(255, 130, 40, 0.9)' : 'rgba(255, 230, 140, 0.85)',
+            life: 0.07
+        });
+
+        particles.push({
+            x: muzzleX, y: muzzleY,
+            vx: 0, vy: 0,
+            life: 0.06, maxLife: 0.06,
+            size: wDef.id === 'shotgun' ? 8 : 5,
+            color: '#fff4a3'
+        });
+
+        for (let i = 0; i < wDef.count; i++) {
+            const spreadAngle = player.angle + (Math.random() - 0.5) * wDef.spread;
+            bullets.push({
+                x: muzzleX,
+                y: muzzleY,
+                vx: Math.cos(spreadAngle) * wDef.speed,
+                vy: Math.sin(spreadAngle) * wDef.speed,
+                damage: wDef.damage,
+                isFlame: wDef.id === 'flamethrower',
+                life: wDef.id === 'flamethrower' ? 0.34 : (wDef.id === 'shotgun' ? 0.36 : 0.65),
+                color: wDef.color
+            });
+        }
+
+        if (wState.mag === 0) {
+            if (wDef.infinite || wState.reserve > 0) {
+                triggerReload();
+            }
+        }
+    }
+
+    function triggerExplosion(x, y, isToxic = false) {
+        sfx.sfxExplosion();
+        camera.shake = isToxic ? 6 : 11;
+
+        decals.push({ type: isToxic ? 'toxic_puddle' : 'crater', x, y, size: isToxic ? 32 : 30 });
+        dynamicFlashes.push({
+            x, y,
+            radius: isToxic ? 150 : 220,
+            color: isToxic ? 'rgba(80, 255, 120, 0.95)' : 'rgba(255, 170, 60, 0.95)',
+            life: 0.25
+        });
+
+        const fireColors = isToxic
+            ? ['#a7f070', '#38b764', '#257179', '#ffffff']
+            : ['#ffffff', '#ffcd75', '#f77622', '#e43b44', '#333c57'];
+
+        for (let i = 0; i < 32; i++) {
+            const ang = Math.random() * Math.PI * 2;
+            const spd = 30 + Math.random() * 140;
+            particles.push({
+                x, y,
+                vx: Math.cos(ang) * spd,
+                vy: Math.sin(ang) * spd,
+                life: 0.35 + Math.random() * 0.35,
+                maxLife: 0.7,
+                size: 4 + Math.random() * 6,
+                color: fireColors[Math.floor(Math.random() * fireColors.length)]
+            });
+        }
+
+        const blastRadius = isToxic ? 75 : 100;
+        for (let i = zombies.length - 1; i >= 0; i--) {
+            const z = zombies[i];
+            const dist = Math.hypot(z.x - x, z.y - y);
+            if (dist < blastRadius) {
+                damageZombie(i, (isToxic ? 95 : 190) * (1 - dist / blastRadius), Math.atan2(z.y - y, z.x - x), !isToxic);
+            }
+        }
+
+        const pDist = Math.hypot(player.x - x, player.y - y);
+        if (pDist < blastRadius * 0.75) {
+            damagePlayer(22 * (1 - pDist / (blastRadius * 0.75)));
+        }
+    }
+
+    function damageZombie(index, dmg, knockAngle, ignite = false) {
+        const z = zombies[index];
+        if (!z) return;
+        z.hp -= dmg;
+        z.hitFlash = 0.1;
+        if (ignite) z.burnTimer = 2.5;
+        z.x += Math.cos(knockAngle) * 4;
+        z.y += Math.sin(knockAngle) * 4;
+
+        for (let p = 0; p < 5; p++) {
+            const a = knockAngle + (Math.random() - 0.5) * 1.2;
+            const s = 30 + Math.random() * 60;
+            particles.push({
+                x: z.x, y: z.y,
+                vx: Math.cos(a) * s,
+                vy: Math.sin(a) * s,
+                life: 0.25, maxLife: 0.25,
+                size: 3,
+                color: z.type === 'toxic' ? '#38b764' : PALETTE.bloodFresh
+            });
+        }
+
+        if (z.hp <= 0) {
+            const zx = z.x;
+            const zy = z.y;
+            const wasToxic = z.type === 'toxic';
+            stats.kills++;
+            stats.score += z.score;
+            decals.push({ type: wasToxic ? 'toxic_puddle' : 'blood', x: zx, y: zy, size: z.radius + 5 });
+            addFloatingText(zx, zy - 10, `+${z.score}`, '#ffcd75');
+
+            if (Math.random() < 0.18) {
+                const drops = ['medkit', 'shotgun_ammo', 'smg_ammo', 'flame_ammo'];
+                pickups.push({
+                    x: zx, y: zy,
+                    type: drops[Math.floor(Math.random() * drops.length)],
+                    bob: 0
+                });
+            }
+            zombies.splice(index, 1);
+
+            if (wasToxic) {
+                triggerExplosion(zx, zy, true);
+            }
+        }
+    }
+
+    function damagePlayer(amount) {
+        if (player.invulnTimer > 0 || gameState !== 'PLAYING') return;
+        player.hp = Math.max(0, player.hp - amount);
+        player.invulnTimer = 0.65;
+        camera.shake = 6;
+        sfx.sfxHurt();
+        addFloatingText(player.x, player.y - 16, `-${Math.ceil(amount)} HP`, '#e43b44');
+
+        if (player.hp <= 0) {
+            triggerGameOver();
+        }
+    }
+
+    function addFloatingText(x, y, text, color = '#ffffff') {
+        floatingTexts.push({ x, y, text, color, life: 1.05 });
+    }
+
+    function checkRescueAndExtract(manualPress = false) {
+        for (const s of survivors) {
+            if (!s.rescued) {
+                const dist = Math.hypot(player.x - s.x, player.y - s.y);
+                if (dist < 32) {
+                    s.rescued = true;
+                    stats.rescued++;
+                    stats.score += 500;
+                    sfx.sfxRescue();
+                    addFloatingText(s.x, s.y - 18, 'RESGATADO! +500', '#38b764');
+
+                    for (let i = 0; i < 16; i++) {
+                        const ang = (Math.PI * 2 / 16) * i;
+                        particles.push({
+                            x: s.x, y: s.y,
+                            vx: Math.cos(ang) * 55,
+                            vy: Math.sin(ang) * 55,
+                            life: 0.45, maxLife: 0.45,
+                            size: 3,
+                            color: '#73eff7'
+                        });
+                    }
+                }
+            }
+        }
+
+        const heliDist = Math.hypot(player.x - helicopter.x, player.y - helicopter.y);
+        if (heliDist < helicopter.radius + 14) {
+            if (stats.rescued > 0 || manualPress) {
+                if (currentStageNum === 1) {
+                    triggerStageClear();
+                } else {
+                    triggerVictory();
+                }
+            } else if (Math.floor(globalTimer * 2) % 4 === 0) {
+                addFloatingText(helicopter.x, helicopter.y - 38, 'SALVE SOBREVIVENTES OU APERTE [E]', '#ffcd75');
+            }
+        }
+    }
+
+    // --- 9. ATUALIZAÇÃO DO LOOP DE JOGO ---
+    function update(dt) {
+        if (gameState !== 'PLAYING') return;
+
+        const stageCfg = STAGES[currentStageNum];
+        const worldSize = stageCfg.worldSize;
+
+        globalTimer += dt;
+        stats.elapsedTime = (performance.now() - stats.startTime) / 1000;
+
+        helicopter.rotorAngle += dt * 24;
+        helicopter.searchlightAngle += dt * 1.6;
+        const distToHeli = Math.hypot(player.x - helicopter.x, player.y - helicopter.y);
+        if (distToHeli < 340) {
+            helicopter.bladeSoundTimer -= dt;
+            if (helicopter.bladeSoundTimer <= 0) {
+                sfx.sfxChopperBlade();
+                helicopter.bladeSoundTimer = 0.14;
+            }
+        }
+
+        // Movimento do Jogador
+        let moveX = 0;
+        let moveY = 0;
+        if (keys['KeyW'] || keys['ArrowUp']) moveY -= 1;
+        if (keys['KeyS'] || keys['ArrowDown']) moveY += 1;
+        if (keys['KeyA'] || keys['ArrowLeft']) moveX -= 1;
+        if (keys['KeyD'] || keys['ArrowRight']) moveX += 1;
+
+        if (touchMove.active) {
+            moveX = touchMove.x;
+            moveY = touchMove.y;
+        }
+
+        const moveLen = Math.hypot(moveX, moveY);
+        if (moveLen > 0) {
+            moveX /= moveLen;
+            moveY /= moveLen;
+            moveEntityWithSlide(player, moveX * player.speed * dt, moveY * player.speed * dt);
+            player.animFrame += dt * 10;
+        }
+
+        // Mira do Jogador
+        if (mouse.active && !isTouchDevice) {
+            const worldMouseX = mouse.x + camera.x;
+            const worldMouseY = mouse.y + camera.y;
+            player.angle = Math.atan2(worldMouseY - player.y, worldMouseX - player.x);
+        } else if (isTouchDevice) {
+            let nearestZ = null;
+            let bestDist = 240;
+            for (const z of zombies) {
+                const d = Math.hypot(z.x - player.x, z.y - player.y);
+                if (d < bestDist) {
+                    bestDist = d;
+                    nearestZ = z;
+                }
+            }
+            if (nearestZ) {
+                player.angle = Math.atan2(nearestZ.y - player.y, nearestZ.x - player.x);
+            } else if (moveLen > 0) {
+                player.angle = Math.atan2(moveY, moveX);
+            }
+        } else if (moveLen > 0) {
+            player.angle = Math.atan2(moveY, moveX);
+        }
+
+        if (player.invulnTimer > 0) player.invulnTimer -= dt;
+        if (player.fireCooldown > 0) player.fireCooldown -= dt;
+
+        if (player.reloading) {
+            player.reloadTimer -= dt;
+            if (player.reloadTimer <= 0) {
+                player.reloading = false;
+                const wDef = WEAPONS[player.weaponIndex];
+                const wState = player.weapons[player.weaponIndex];
+                if (wDef.infinite) {
+                    wState.mag = wDef.magSize;
+                } else {
+                    const needed = wDef.magSize - wState.mag;
+                    const load = Math.min(needed, wState.reserve);
+                    wState.mag += load;
+                    wState.reserve -= load;
+                }
+            }
+        }
+
+        if (mouse.down || keys['Space'] || touchFiring) {
+            fireWeapon();
+        }
+
+        // Atualizar Projéteis e Chamas
+        for (let i = bullets.length - 1; i >= 0; i--) {
+            const b = bullets[i];
+            b.x += b.vx * dt;
+            b.y += b.vy * dt;
+            b.life -= dt;
+
+            if (b.isFlame && Math.random() < 0.6) {
+                particles.push({
+                    x: b.x, y: b.y,
+                    vx: (Math.random() - 0.5) * 20,
+                    vy: -15 - Math.random() * 15,
+                    life: 0.22, maxLife: 0.22,
+                    size: 6,
+                    color: Math.random() > 0.4 ? '#f77622' : '#ffcd75'
+                });
+            }
+
+            if (b.life <= 0 || pointInsideObstacle(b.x, b.y, 2)) {
+                bullets.splice(i, 1);
+                continue;
+            }
+
+            let hitSomething = false;
+            for (let bi = barrels.length - 1; bi >= 0; bi--) {
+                const bar = barrels[bi];
+                if (Math.hypot(b.x - bar.x, b.y - bar.y) < bar.radius + 3) {
+                    bar.hp -= b.damage;
+                    hitSomething = true;
+                    if (bar.hp <= 0) {
+                        barrels.splice(bi, 1);
+                        triggerExplosion(bar.x, bar.y, false);
+                    }
+                    break;
+                }
+            }
+            if (hitSomething) {
+                bullets.splice(i, 1);
+                continue;
+            }
+
+            for (let zi = zombies.length - 1; zi >= 0; zi--) {
+                const z = zombies[zi];
+                if (Math.hypot(b.x - z.x, b.y - z.y) < z.radius + (b.isFlame ? 8 : 4)) {
+                    damageZombie(zi, b.damage, Math.atan2(b.vy, b.vx), b.isFlame);
+                    if (!b.isFlame) {
+                        bullets.splice(i, 1);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Atualizar Zumbis
+        for (let i = zombies.length - 1; i >= 0; i--) {
+            const z = zombies[i];
+            z.animTimer += dt * (z.type === 'runner' ? 11 : 6);
+            if (z.hitFlash > 0) z.hitFlash -= dt;
+
+            // Dano contínuo se estiver em chamas
+            if (z.burnTimer > 0) {
+                z.burnTimer -= dt;
+                if (Math.random() < 0.35) {
+                    particles.push({
+                        x: z.x + (Math.random() - 0.5) * 8,
+                        y: z.y - 4,
+                        vx: 0, vy: -18,
+                        life: 0.25, maxLife: 0.25,
+                        size: 4,
+                        color: '#f77622'
+                    });
+                }
+                z.hp -= 18 * dt;
+                if (z.hp <= 0) {
+                    damageZombie(i, 1, 0, false);
+                    continue;
+                }
+            }
+
+            const distToPlayer = Math.hypot(player.x - z.x, player.y - z.y);
+
+            z.groanTimer -= dt;
+            if (z.groanTimer <= 0 && distToPlayer < 250) {
+                sfx.sfxZombieGroan();
+                z.groanTimer = 4 + Math.random() * 7;
+            }
+
+            if (distToPlayer < 380) {
+                z.angle = Math.atan2(player.y - z.y, player.x - z.x);
+                let vx = Math.cos(z.angle) * z.speed;
+                let vy = Math.sin(z.angle) * z.speed;
+
+                for (let j = 0; j < zombies.length; j++) {
+                    if (i === j) continue;
+                    const other = zombies[j];
+                    const d = Math.hypot(z.x - other.x, z.y - other.y);
+                    if (d > 0 && d < z.radius + other.radius) {
+                        vx += ((z.x - other.x) / d) * 35;
+                        vy += ((z.y - other.y) / d) * 35;
+                    }
+                }
+
+                moveEntityWithSlide(z, vx * dt, vy * dt);
+            }
+
+            if (distToPlayer < z.radius + player.radius + 2) {
+                damagePlayer(z.damage);
+            }
+        }
+
+        // Hordas dinâmicas contínuas
+        if (zombies.length < stageCfg.maxZombies && Math.random() < dt * 1.8) {
+            const ang = Math.random() * Math.PI * 2;
+            const spawnDist = 350 + Math.random() * 190;
+            const zx = player.x + Math.cos(ang) * spawnDist;
+            const zy = player.y + Math.sin(ang) * spawnDist;
+            if (!pointInsideObstacle(zx, zy, 14)) {
+                const r = Math.random();
+                spawnZombie(zx, zy, r > 0.88 ? 'brute' : (r > 0.72 ? 'toxic' : (r > 0.52 ? 'runner' : 'walker')));
+            }
+        }
+
+        // Sobreviventes
+        for (const s of survivors) {
+            if (s.rescued) continue;
+            s.animTimer += dt * 7;
+            s.helpTimer -= dt;
+            const d = Math.hypot(player.x - s.x, player.y - s.y);
+            if (s.helpTimer <= 0 && d < 340) {
+                sfx.sfxHelpCall();
+                addFloatingText(s.x, s.y - 16, 'SOCORRO!', '#73eff7');
+                s.helpTimer = 3.5 + Math.random() * 3;
+            }
+        }
+
+        // Coletar Caixas de Armas e Suprimentos
+        for (let i = pickups.length - 1; i >= 0; i--) {
+            const p = pickups[i];
+            p.bob += dt * 5;
+            if (Math.hypot(player.x - p.x, player.y - p.y) < player.radius + 14) {
+                if (p.type.startsWith('crate_')) {
+                    sfx.sfxRescue();
+                    const wIdx = WEAPONS.findIndex(w => w.id === p.weaponId);
+                    if (wIdx !== -1) {
+                        const wDef = WEAPONS[wIdx];
+                        const wState = player.weapons[wIdx];
+                        const firstTime = !wState.unlocked;
+                        wState.unlocked = true;
+                        wState.mag = wDef.magSize;
+                        wState.reserve += wDef.magSize * 3;
+                        switchWeapon(wIdx);
+                        addFloatingText(p.x, p.y - 16, firstTime ? `NOVA ARMA: ${wDef.name}!` : `+MUNIÇÃO ${wDef.shortName}`, wDef.color);
+                    }
+                } else {
+                    sfx.sfxPickup();
+                    if (p.type === 'medkit') {
+                        player.hp = Math.min(player.maxHp, player.hp + 35);
+                        addFloatingText(p.x, p.y - 12, '+35 HP', '#38b764');
+                    } else if (p.type === 'shotgun_ammo') {
+                        player.weapons[1].reserve += 12;
+                        addFloatingText(p.x, p.y - 12, '+12 ESCOPETA', '#ffcd75');
+                    } else if (p.type === 'smg_ammo') {
+                        player.weapons[2].reserve += 45;
+                        addFloatingText(p.x, p.y - 12, '+45 METRALHA', '#e43b44');
+                    } else if (p.type === 'flame_ammo') {
+                        player.weapons[3].reserve += 60;
+                        addFloatingText(p.x, p.y - 12, '+60 COMBUSTÍVEL', '#f77622');
+                    }
+                }
+                pickups.splice(i, 1);
+            }
+        }
+
+        checkRescueAndExtract(false);
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const pt = particles[i];
+            pt.x += pt.vx * dt;
+            pt.y += pt.vy * dt;
+            pt.life -= dt;
+            if (pt.life <= 0) particles.splice(i, 1);
+        }
+
+        for (let i = dynamicFlashes.length - 1; i >= 0; i--) {
+            dynamicFlashes[i].life -= dt;
+            if (dynamicFlashes[i].life <= 0) dynamicFlashes.splice(i, 1);
+        }
+
+        for (let i = floatingTexts.length - 1; i >= 0; i--) {
+            const ft = floatingTexts[i];
+            ft.y -= 22 * dt;
+            ft.life -= dt;
+            if (ft.life <= 0) floatingTexts.splice(i, 1);
+        }
+
+        const targetCamX = Math.max(0, Math.min(worldSize - viewWidth, player.x - viewWidth / 2));
+        const targetCamY = Math.max(0, Math.min(worldSize - viewHeight, player.y - viewHeight / 2));
+        camera.x += (targetCamX - camera.x) * Math.min(1, dt * 10);
+        camera.y += (targetCamY - camera.y) * Math.min(1, dt * 10);
+        if (camera.shake > 0) {
+            camera.shake = Math.max(0, camera.shake - dt * 28);
+        }
+    }
+
+    // --- 10. RENDERIZAÇÃO PIXEL ART 16-BIT (SNES) + LUZES E SOMBRAS DINÂMICAS ---
+    function draw() {
+        ctx.fillStyle = PALETTE.asphalt;
+        ctx.fillRect(0, 0, viewWidth, viewHeight);
+
+        if (!player) return;
+
+        const shakeX = Math.floor(camera.shake > 0 ? (Math.random() - 0.5) * camera.shake : 0);
+        const shakeY = Math.floor(camera.shake > 0 ? (Math.random() - 0.5) * camera.shake : 0);
+        const camX = Math.floor(camera.x + shakeX);
+        const camY = Math.floor(camera.y + shakeY);
+
+        ctx.save();
+        ctx.translate(-camX, -camY);
+
+        // 10.1. Chão detalhado 16-bit
+        drawGround();
+
+        // 10.2. Heliporto
+        drawHelipad();
+
+        // 10.3. Calçadas com chanfro 16-bit, parques, manchas de sangue e crateras
+        drawDecals();
+
+        // 10.4. Caixas de Armas e Suprimentos
+        drawPickups();
+
+        // 10.5. Barris Explosivos
+        drawBarrels();
+
+        // 10.6. Sobreviventes
+        drawSurvivors();
+
+        // 10.7. Jogador (com sprite detalhado estilo SNES)
+        drawPlayer();
+
+        // 10.8. Zumbis (4 arquétipos com sombras direcionais)
+        drawZombies();
+
+        // 10.9. Projéteis
+        for (const b of bullets) {
+            ctx.fillStyle = b.color;
+            const s = b.isFlame ? 6 : 4;
+            ctx.fillRect(Math.floor(b.x - s / 2), Math.floor(b.y - s / 2), s, s);
+        }
+
+        // 10.10. Obstáculos 2.5D (Prédios detalhados, carros metálicos, postes, árvores)
+        drawObstacles();
+
+        // 10.11. Helicóptero de Resgate
+        drawHelicopter();
+
+        // 10.12. Partículas e Fumaça
+        for (const pt of particles) {
+            ctx.fillStyle = pt.color;
+            const s = Math.max(2, Math.floor(pt.size * (pt.life / pt.maxLife)));
+            ctx.fillRect(Math.floor(pt.x - s / 2), Math.floor(pt.y - s / 2), s, s);
+        }
+
+        ctx.restore();
+
+        // 10.13. CAMADA DE ILUMINAÇÃO E SOMBRAS DINÂMICAS EM PIXEL ART
+        renderLightingLayer(camX, camY);
+
+        // 10.14. Textos Flutuantes (Acima da escuridão para máxima legibilidade)
+        ctx.save();
+        ctx.translate(-camX, -camY);
+        ctx.font = '8px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        for (const ft of floatingTexts) {
+            ctx.fillStyle = '#000';
+            ctx.fillText(ft.text, Math.floor(ft.x) + 1, Math.floor(ft.y) + 1);
+            ctx.fillStyle = ft.color;
+            ctx.fillText(ft.text, Math.floor(ft.x), Math.floor(ft.y));
+        }
+        ctx.restore();
+
+        // 10.15. HUD Estilo Super Nintendo
+        if (gameState === 'PLAYING') {
+            drawSNESHud();
+        }
+    }
+
+    // Sistema de Iluminação e Sombras Pixel Art
+    function renderLightingLayer(camX, camY) {
+        const stageCfg = STAGES[currentStageNum];
+
+        // Preencher buffer de luz com a atmosfera da fase (Entardecer ou Noite)
+        lightCtx.globalCompositeOperation = 'source-over';
+        lightCtx.fillStyle = stageCfg.ambientLight;
+        lightCtx.fillRect(0, 0, viewWidth, viewHeight);
+
+        // Usar 'destination-out' para recortar os cones e halos de luz na escuridão
+        lightCtx.globalCompositeOperation = 'destination-out';
+
+        const px = Math.floor(player.x - camX);
+        const py = Math.floor(player.y - camY);
+
+        // 1. Halo de percepção imediata ao redor do jogador
+        drawPixelLightCircle(lightCtx, px, py, 58, 0.92);
+
+        // 2. Cone da Lanterna Tática apontando para a mira
+        lightCtx.save();
+        lightCtx.translate(px, py);
+        lightCtx.rotate(player.angle);
+        const coneGrad = lightCtx.createRadialGradient(8, 0, 6, 95, 0, 175);
+        coneGrad.addColorStop(0, 'rgba(0,0,0,1)');
+        coneGrad.addColorStop(0.65, 'rgba(0,0,0,0.85)');
+        coneGrad.addColorStop(1, 'rgba(0,0,0,0)');
+        lightCtx.fillStyle = coneGrad;
+        lightCtx.beginPath();
+        lightCtx.moveTo(4, -6);
+        lightCtx.lineTo(185, -72);
+        lightCtx.lineTo(185, 72);
+        lightCtx.lineTo(4, 6);
+        lightCtx.closePath();
+        lightCtx.fill();
+        lightCtx.restore();
+
+        // 3. Postes de Luz das Ruas (com cintilação 16-bit)
+        for (const lamp of streetLamps) {
+            if (lamp.broken) continue;
+            const lx = lamp.x - camX;
+            const ly = lamp.y - camY;
+            if (lx < -120 || lx > viewWidth + 120 || ly < -120 || ly > viewHeight + 120) continue;
+
+            const flicker = Math.sin(globalTimer * 18 + lamp.flickerSeed) > 0.92 ? 0.45 : 0.88;
+            drawPixelLightCircle(lightCtx, lx, ly, 92, flicker);
+        }
+
+        // 4. Carros Incendiados iluminando a rua
+        for (const obs of obstacles) {
+            if (obs.type === 'car' && obs.burning) {
+                const cx = obs.x + obs.w / 2 - camX;
+                const cy = obs.y + obs.h / 2 - camY;
+                if (cx < -100 || cx > viewWidth + 100 || cy < -100 || cy > viewHeight + 100) continue;
+                const pulse = 75 + Math.sin(globalTimer * 22 + obs.x) * 8;
+                drawPixelLightCircle(lightCtx, cx, cy, pulse, 0.85);
+            }
+        }
+
+        // 5. Caixas de Armas e Sobreviventes (Faróis de sinalização)
+        for (const p of pickups) {
+            if (p.type.startsWith('crate_')) {
+                drawPixelLightCircle(lightCtx, p.x - camX, p.y - camY, 44, 0.8);
+            }
+        }
+        for (const s of survivors) {
+            if (!s.rescued) {
+                drawPixelLightCircle(lightCtx, s.x - camX, s.y - camY, 46, 0.78);
+            }
+        }
+
+        // 6. Clarões de tiros e explosões
+        for (const fl of dynamicFlashes) {
+            drawPixelLightCircle(lightCtx, fl.x - camX, fl.y - camY, fl.radius, 0.98);
+        }
+
+        // 7. Holofote giratório do Helicóptero de Resgate
+        const hx = helicopter.x - camX;
+        const hy = helicopter.y - camY;
+        if (hx > -220 && hx < viewWidth + 220 && hy > -220 && hy < viewHeight + 220) {
+            drawPixelLightCircle(lightCtx, hx, hy, 125, 0.95);
+            lightCtx.save();
+            lightCtx.translate(hx, hy);
+            lightCtx.rotate(helicopter.searchlightAngle);
+            lightCtx.fillStyle = 'rgba(0,0,0,0.85)';
+            lightCtx.beginPath();
+            lightCtx.moveTo(0, 0);
+            lightCtx.lineTo(170, -50);
+            lightCtx.lineTo(170, 50);
+            lightCtx.closePath();
+            lightCtx.fill();
+            lightCtx.restore();
+        }
+
+        // Desenhar a camada de sombra sobre o jogo
+        ctx.drawImage(lightCanvas, 0, 0);
+
+        // Adicionar brilho quente colorido (Additive 'lighter') nos fogos, tiros e caixas
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const fl of dynamicFlashes) {
+            const grad = ctx.createRadialGradient(fl.x - camX, fl.y - camY, 2, fl.x - camX, fl.y - camY, fl.radius * 0.7);
+            grad.addColorStop(0, fl.color);
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(fl.x - camX, fl.y - camY, fl.radius * 0.7, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function drawPixelLightCircle(targetCtx, x, y, radius, alpha) {
+        const grad = targetCtx.createRadialGradient(x, y, radius * 0.15, x, y, radius);
+        grad.addColorStop(0, `rgba(0,0,0,${alpha})`);
+        grad.addColorStop(0.65, `rgba(0,0,0,${alpha * 0.55})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        targetCtx.fillStyle = grad;
+        targetCtx.beginPath();
+        targetCtx.arc(x, y, radius, 0, Math.PI * 2);
+        targetCtx.fill();
+    }
+
+    function drawGround() {
+        const worldSize = STAGES[currentStageNum].worldSize;
+        const startCol = Math.floor(camera.x / TILE_SIZE);
+        const endCol = Math.ceil((camera.x + viewWidth) / TILE_SIZE);
+        const startRow = Math.floor(camera.y / TILE_SIZE);
+        const endRow = Math.ceil((camera.y + viewHeight) / TILE_SIZE);
+
+        for (let r = startRow; r <= endRow; r++) {
+            for (let c = startCol; c <= endCol; c++) {
+                const tx = c * TILE_SIZE;
+                const ty = r * TILE_SIZE;
+
+                if (tx < 32 || ty < 32 || tx >= worldSize - 32 || ty >= worldSize - 32) {
+                    ctx.fillStyle = '#3d1c19';
+                    ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+                    ctx.fillStyle = '#ffcd75';
+                    if ((c + r) % 2 === 0) ctx.fillRect(tx + 8, ty + 28, 48, 8);
+                    continue;
+                }
+
+                const hash = (c * 73856093) ^ (r * 19349663);
+                ctx.fillStyle = (hash & 1) ? PALETTE.asphalt : PALETTE.asphaltDark;
+                ctx.fillRect(tx, ty, TILE_SIZE, TILE_SIZE);
+
+                // Textura pixelada 16-bit de granulação no asfalto
+                ctx.fillStyle = PALETTE.asphaltHighlight;
+                ctx.fillRect(tx + (Math.abs(hash) % 48) + 4, ty + (Math.abs(hash >> 4) % 48) + 4, 2, 2);
+
+                if (c % 7 === 0 && r % 2 === 0) {
+                    ctx.fillStyle = '#9e8229';
+                    ctx.fillRect(tx + 30, ty + 12, 4, 36);
+                }
+                if (r % 7 === 0 && c % 2 === 0) {
+                    ctx.fillStyle = '#9e8229';
+                    ctx.fillRect(tx + 12, ty + 30, 36, 4);
+                }
+
+                if ((hash % 5) === 0) {
+                    ctx.fillStyle = PALETTE.asphaltCrack;
+                    ctx.fillRect(tx + 14, ty + 20, 12, 2);
+                    ctx.fillRect(tx + 24, ty + 22, 2, 10);
+                }
+            }
+        }
+    }
+
+    function drawHelipad() {
+        const hx = Math.floor(helicopter.x);
+        const hy = Math.floor(helicopter.y);
+        const padSize = 154;
+
+        ctx.fillStyle = PALETTE.heliPad;
+        ctx.fillRect(hx - padSize / 2, hy - padSize / 2, padSize, padSize);
+
+        ctx.strokeStyle = PALETTE.heliYellow;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(hx - padSize / 2 + 4, hy - padSize / 2 + 4, padSize - 8, padSize - 8);
+
+        ctx.beginPath();
+        ctx.arc(hx, hy, 52, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = PALETTE.heliYellow;
+        ctx.fillRect(hx - 18, hy - 24, 8, 48);
+        ctx.fillRect(hx + 10, hy - 24, 8, 48);
+        ctx.fillRect(hx - 18, hy - 4, 36, 8);
+    }
+
+    function drawDecals() {
+        for (const d of decals) {
+            if (d.x + 240 < camera.x || d.x - 240 > camera.x + viewWidth ||
+                d.y + 240 < camera.y || d.y - 240 > camera.y + viewHeight) continue;
+
+            if (d.type === 'sidewalk') {
+                // Calçada 16-bit com luz no topo/esquerda e sombra na base/direita
+                ctx.fillStyle = PALETTE.sidewalk;
+                ctx.fillRect(d.x, d.y, d.w, d.h);
+                ctx.fillStyle = PALETTE.sidewalkLight;
+                ctx.fillRect(d.x, d.y, d.w, 3);
+                ctx.fillRect(d.x, d.y, 3, d.h);
+                ctx.fillStyle = PALETTE.sidewalkShadow;
+                ctx.fillRect(d.x, d.y + d.h - 4, d.w, 4);
+                ctx.fillRect(d.x + d.w - 4, d.y, 4, d.h);
+            } else if (d.type === 'park') {
+                ctx.fillStyle = PALETTE.grass;
+                ctx.fillRect(d.x, d.y, d.w, d.h);
+                ctx.fillStyle = PALETTE.grassLight;
+                ctx.fillRect(d.x + 8, d.y + 8, d.w - 16, 4);
+                ctx.strokeStyle = PALETTE.sidewalkShadow;
+                ctx.lineWidth = 3;
+                ctx.strokeRect(d.x, d.y, d.w, d.h);
+            } else if (d.type === 'blood') {
+                ctx.fillStyle = PALETTE.blood;
+                ctx.fillRect(Math.floor(d.x - d.size / 2), Math.floor(d.y - d.size / 2), d.size, d.size * 0.8);
+            } else if (d.type === 'toxic_puddle') {
+                ctx.fillStyle = '#1d6b38';
+                ctx.fillRect(Math.floor(d.x - d.size / 2), Math.floor(d.y - d.size / 2), d.size, d.size * 0.8);
+                ctx.fillStyle = '#73f78b';
+                ctx.fillRect(Math.floor(d.x - d.size / 4), Math.floor(d.y - d.size / 4), d.size * 0.5, d.size * 0.4);
+            } else if (d.type === 'crater') {
+                ctx.fillStyle = '#121318';
+                ctx.fillRect(Math.floor(d.x - d.size / 2), Math.floor(d.y - d.size / 2), d.size, d.size);
+                ctx.fillStyle = '#292c36';
+                ctx.fillRect(Math.floor(d.x - d.size / 3), Math.floor(d.y - d.size / 3), d.size * 0.66, d.size * 0.66);
+            } else if (d.type === 'rubble') {
+                ctx.fillStyle = PALETTE.rubble;
+                ctx.fillRect(Math.floor(d.x), Math.floor(d.y), d.size, d.size * 0.7);
+                ctx.fillStyle = PALETTE.rubbleLight;
+                ctx.fillRect(Math.floor(d.x + 2), Math.floor(d.y + 2), d.size * 0.4, d.size * 0.4);
+            }
+        }
+    }
+
+    function drawPickups() {
+        for (const p of pickups) {
+            const py = Math.floor(p.y + Math.sin(p.bob) * 2.5);
+            const px = Math.floor(p.x);
+
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fillRect(px - 8, Math.floor(p.y) + 6, 16, 4);
+
+            if (p.type.startsWith('crate_')) {
+                // Caixa Militar 16-Bit de Descoberta de Arma
+                const wDef = WEAPONS.find(w => w.id === p.weaponId);
+                ctx.fillStyle = '#3b4d2b';
+                ctx.fillRect(px - 11, py - 8, 22, 16);
+                ctx.fillStyle = '#637d49';
+                ctx.fillRect(px - 11, py - 8, 22, 3);
+                ctx.strokeStyle = wDef ? wDef.color : '#ffcd75';
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(px - 10, py - 7, 20, 14);
+                // Ícone da arma dentro da caixa
+                ctx.fillStyle = wDef ? wDef.color : '#ffcd75';
+                ctx.fillRect(px - 6, py - 2, 12, 4);
+            } else if (p.type === 'medkit') {
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(px - 7, py - 6, 14, 12);
+                ctx.fillStyle = '#e43b44';
+                ctx.fillRect(px - 2, py - 4, 4, 8);
+                ctx.fillRect(px - 4, py - 2, 8, 4);
+            } else if (p.type === 'shotgun_ammo') {
+                ctx.fillStyle = '#8f2631';
+                ctx.fillRect(px - 7, py - 6, 14, 12);
+                ctx.fillStyle = '#ffcd75';
+                ctx.fillRect(px - 5, py - 4, 10, 4);
+            } else if (p.type === 'flame_ammo') {
+                ctx.fillStyle = '#b84a14';
+                ctx.fillRect(px - 6, py - 7, 12, 14);
+                ctx.fillStyle = '#ffcd75';
+                ctx.fillRect(px - 4, py - 3, 8, 4);
+            } else {
+                ctx.fillStyle = '#2e6f40';
+                ctx.fillRect(px - 7, py - 6, 14, 12);
+                ctx.fillStyle = '#ffcd75';
+                ctx.fillRect(px - 4, py - 2, 8, 5);
+            }
+        }
+    }
+
+    function drawBarrels() {
+        for (const bar of barrels) {
+            const bx = Math.floor(bar.x);
+            const by = Math.floor(bar.y);
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fillRect(bx - 7, by + 5, 16, 6);
+
+            ctx.fillStyle = '#c9242b';
+            ctx.fillRect(bx - 7, by - 9, 14, 16);
+            ctx.fillStyle = '#ffcd75';
+            ctx.fillRect(bx - 7, by - 3, 14, 3);
+            ctx.fillStyle = '#ff6b72';
+            ctx.fillRect(bx - 5, by - 8, 3, 14);
+        }
+    }
+
+    function drawSurvivors() {
+        for (const s of survivors) {
+            if (s.rescued) continue;
+            const sx = Math.floor(s.x);
+            const sy = Math.floor(s.y);
+            const wave = Math.sin(s.animTimer) > 0 ? -3 : 0;
+
+            ctx.strokeStyle = 'rgba(115, 239, 247, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(sx, sy + 4, 13 + Math.sin(s.animTimer * 0.7) * 3, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(0,0,0,0.55)';
+            ctx.fillRect(sx - 5, sy + 6, 13, 5);
+
+            ctx.fillStyle = s.shirtColor;
+            ctx.fillRect(sx - 5, sy - 4, 10, 10);
+            ctx.fillStyle = '#f4cca1';
+            ctx.fillRect(sx - 8, sy - 7 + wave, 3, 6);
+            ctx.fillRect(sx + 5, sy - 7 - wave, 3, 6);
+            ctx.fillRect(sx - 4, sy - 11, 8, 7);
+            ctx.fillStyle = '#3b2518';
+            ctx.fillRect(sx - 4, sy - 12, 8, 3);
+        }
+    }
+
+    function drawPlayer() {
+        if (player.invulnTimer > 0 && Math.floor(player.invulnTimer * 20) % 2 === 0) return;
+
+        const px = Math.floor(player.x);
+        const py = Math.floor(player.y);
+        const step = Math.sin(player.animFrame) * 2;
+
+        // Sombra direcional projetada no chão
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(px - 6, py + 6, 16, 6);
+
+        // Pernas com sombreamento 16-bit
+        ctx.fillStyle = '#182030';
+        ctx.fillRect(px - 5, py + 3 + step, 4, 6);
+        ctx.fillRect(px + 1, py + 3 - step, 4, 6);
+
+        // Colete tático multi-tonal estilo SNES
+        ctx.fillStyle = '#204287';
+        ctx.fillRect(px - 6, py - 5, 12, 10);
+        ctx.fillStyle = '#4f7cd6';
+        ctx.fillRect(px - 5, py - 5, 10, 4);
+        ctx.fillStyle = '#85a9f2';
+        ctx.fillRect(px - 4, py - 4, 4, 2);
+
+        // Cabeça, sombreamento facial e Bandana Vermelha
+        ctx.fillStyle = '#d9a473';
+        ctx.fillRect(px - 4, py - 12, 8, 7);
+        ctx.fillStyle = '#f7cfa8';
+        ctx.fillRect(px - 4, py - 12, 6, 5);
+        ctx.fillStyle = '#e43b44';
+        ctx.fillRect(px - 5, py - 12, 10, 3);
+
+        // Arma apontando na direção da mira
+        ctx.save();
+        ctx.translate(px, py - 1);
+        ctx.rotate(player.angle);
+        ctx.fillStyle = '#181a20';
+        const gunLen = player.weaponIndex === 0 ? 11 : 17;
+        ctx.fillRect(2, -2, gunLen, 4);
+        ctx.fillStyle = WEAPONS[player.weaponIndex].color;
+        ctx.fillRect(4, -1, 5, 2);
+        ctx.restore();
+    }
+
+    function drawZombies() {
+        for (const z of zombies) {
+            if (z.x + 30 < camera.x || z.x - 30 > camera.x + viewWidth ||
+                z.y + 30 < camera.y || z.y - 30 > camera.y + viewHeight) continue;
+
+            const zx = Math.floor(z.x);
+            const zy = Math.floor(z.y);
+            const wobble = Math.sin(z.animTimer) * 2;
+            const scale = z.type === 'brute' ? 1.5 : 1.0;
+
+            // Sombra projetada no chão
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(zx - 5 * scale, zy + 5 * scale, 14 * scale, 5 * scale);
+
+            // Corpo com luz no topo e sombra na base
+            ctx.fillStyle = z.hitFlash > 0 ? '#ffffff' : z.color;
+            ctx.fillRect(zx - 5 * scale, zy - 5 * scale, 10 * scale, 11 * scale);
+
+            ctx.fillStyle = z.hitFlash > 0 ? '#ffffff' : '#262230';
+            ctx.fillRect(zx - 5 * scale, zy + 1 * scale, 10 * scale, 5 * scale);
+
+            // Braços estendidos
+            const skinColor = z.type === 'toxic' ? '#73f78b' : '#6ea34b';
+            ctx.fillStyle = z.hitFlash > 0 ? '#ffffff' : skinColor;
+            ctx.fillRect(zx - 7 * scale, zy - 3 * scale + wobble, 3 * scale, 6 * scale);
+            ctx.fillRect(zx + 4 * scale, zy - 3 * scale - wobble, 3 * scale, 6 * scale);
+
+            // Cabeça e olhos brilhantes
+            ctx.fillRect(zx - 4 * scale, zy - 11 * scale, 8 * scale, 6 * scale);
+            ctx.fillStyle = z.type === 'toxic' ? '#ffff75' : '#ff2a2a';
+            ctx.fillRect(zx - 2 * scale, zy - 9 * scale, 2, 2);
+            ctx.fillRect(zx + 1 * scale, zy - 9 * scale, 2, 2);
+        }
+    }
+
+    function drawObstacles() {
+        for (const obs of obstacles) {
+            if (obs.x + obs.w < camera.x || obs.x > camera.x + viewWidth ||
+                obs.y + obs.h < camera.y || obs.y > camera.y + viewHeight) continue;
+
+            if (obs.type === 'building') {
+                // Sombra longa projetada do prédio (profundidade 16-bit)
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(obs.x + 10, obs.y + 10, obs.w, obs.h);
+
+                // Parede de tijolos com textura sombreada
+                ctx.fillStyle = PALETTE.wallBrick;
+                ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+                ctx.fillStyle = PALETTE.wallBrickDark;
+                ctx.fillRect(obs.x, obs.y + obs.h - 14, obs.w, 14);
+
+                // Telhado em ruínas com borda iluminada (efeito 2.5D SNES)
+                ctx.fillStyle = PALETTE.wallTop;
+                ctx.fillRect(obs.x + 6, obs.y + 6, obs.w - 12, obs.h - 20);
+                ctx.fillStyle = PALETTE.wallTopTrim;
+                ctx.fillRect(obs.x + 6, obs.y + 6, obs.w - 12, 3);
+                ctx.fillRect(obs.x + 6, obs.y + 6, 3, obs.h - 20);
+
+                // Janelas quebradas na fachada
+                ctx.fillStyle = '#141117';
+                for (let wx = obs.x + 16; wx < obs.x + obs.w - 24; wx += 32) {
+                    ctx.fillRect(wx, obs.y + obs.h - 11, 14, 8);
+                    ctx.fillStyle = '#4a5568';
+                    ctx.fillRect(wx, obs.y + obs.h - 11, 14, 2);
+                    ctx.fillStyle = '#141117';
+                }
+                if (obs.hasAc) {
+                    ctx.fillStyle = '#7a8599';
+                    ctx.fillRect(obs.x + obs.w - 42, obs.y + 18, 22, 18);
+                    ctx.fillStyle = '#3d4452';
+                    ctx.fillRect(obs.x + obs.w - 39, obs.y + 21, 16, 12);
+                }
+                if (obs.ruined) {
+                    ctx.fillStyle = PALETTE.rubble;
+                    ctx.fillRect(obs.x + 18, obs.y + 20, 38, 28);
+                }
+            } else if (obs.type === 'car') {
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(obs.x + 4, obs.y + 5, obs.w, obs.h);
+
+                ctx.fillStyle = obs.color;
+                ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+                // Brilho metálico estilo SNES no capô
+                ctx.fillStyle = 'rgba(255,255,255,0.28)';
+                ctx.fillRect(obs.x + 2, obs.y + 2, obs.w - 4, 3);
+
+                ctx.fillStyle = '#1b222c';
+                if (obs.horizontal) {
+                    ctx.fillRect(obs.x + 10, obs.y + 4, 26, obs.h - 8);
+                } else {
+                    ctx.fillRect(obs.x + 4, obs.y + 10, obs.w - 8, 26);
+                }
+
+                if (obs.burning && Math.random() < 0.45) {
+                    particles.push({
+                        x: obs.x + obs.w / 2 + (Math.random() - 0.5) * 8,
+                        y: obs.y + obs.h / 2,
+                        vx: (Math.random() - 0.5) * 12,
+                        vy: -20 - Math.random() * 20,
+                        life: 0.4, maxLife: 0.4,
+                        size: 5,
+                        color: Math.random() > 0.4 ? '#f77622' : '#ffcd75'
+                    });
+                }
+            } else if (obs.type === 'tree') {
+                ctx.fillStyle = 'rgba(0,0,0,0.55)';
+                ctx.fillRect(obs.x + 4, obs.y + 5, obs.w, obs.h);
+                ctx.fillStyle = '#2d1e18';
+                ctx.fillRect(obs.x + 7, obs.y + 7, 10, 13);
+                ctx.fillStyle = '#264d2b';
+                ctx.fillRect(obs.x + 2, obs.y, 20, 14);
+                ctx.fillStyle = '#386e3e';
+                ctx.fillRect(obs.x + 3, obs.y + 1, 14, 6);
+            }
+        }
+
+        // Desenhar Postes de Luz
+        for (const lamp of streetLamps) {
+            if (lamp.x + 20 < camera.x || lamp.x - 20 > camera.x + viewWidth ||
+                lamp.y + 20 < camera.y || lamp.y - 20 > camera.y + viewHeight) continue;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(lamp.x, lamp.y + 2, 12, 3);
+            ctx.fillStyle = '#4a5568';
+            ctx.fillRect(lamp.x - 2, lamp.y - 14, 4, 16);
+            ctx.fillStyle = lamp.broken ? '#2d3748' : '#fff4a3';
+            ctx.fillRect(lamp.x - 3, lamp.y - 16, 6, 4);
+        }
+    }
+
+    function drawHelicopter() {
+        const hx = Math.floor(helicopter.x);
+        const hy = Math.floor(helicopter.y);
+
+        ctx.fillStyle = 'rgba(0,0,0,0.5)';
+        ctx.fillRect(hx - 24, hy + 14, 56, 24);
+
+        ctx.fillStyle = '#3a4a38';
+        ctx.fillRect(hx - 48, hy - 5, 32, 10);
+        ctx.fillStyle = '#ffcd75';
+        ctx.fillRect(hx - 46, hy - 8, 6, 16);
+
+        ctx.fillStyle = '#4c6148';
+        ctx.fillRect(hx - 20, hy - 14, 42, 28);
+        ctx.fillStyle = '#688263';
+        ctx.fillRect(hx - 14, hy - 10, 28, 12);
+
+        ctx.fillStyle = '#3b5dc9';
+        ctx.fillRect(hx + 12, hy - 10, 12, 20);
+        ctx.fillStyle = '#73eff7';
+        ctx.fillRect(hx + 15, hy - 7, 5, 8);
+
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.rotate(helicopter.rotorAngle);
+        ctx.fillStyle = 'rgba(220, 230, 240, 0.78)';
+        ctx.fillRect(-56, -2, 112, 4);
+        ctx.fillRect(-2, -56, 4, 112);
+        ctx.restore();
+    }
+
+    // --- 11. HUD ESTILO SUPER NINTENDO + SLOTS DE ARMAS DESCOBERTAS + RADAR ---
+    function drawSNESHud() {
+        const hudH = 42;
+        ctx.fillStyle = 'rgba(15, 17, 26, 0.92)';
+        ctx.fillRect(0, 0, viewWidth, hudH);
+        ctx.fillStyle = '#3b4666';
+        ctx.fillRect(0, hudH - 2, viewWidth, 2);
+
+        ctx.font = '8px "Press Start 2P", monospace';
+        ctx.textAlign = 'left';
+
+        // 1. Barra de Vida (HP) e Fase Atual
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText('HP', 8, 13);
+        ctx.fillStyle = '#26070a';
+        ctx.fillRect(28, 5, 70, 9);
+        const hpRatio = Math.max(0, player.hp / player.maxHp);
+        ctx.fillStyle = hpRatio > 0.5 ? '#38b764' : (hpRatio > 0.25 ? '#ffcd75' : '#e43b44');
+        ctx.fillRect(29, 6, Math.floor(68 * hpRatio), 7);
+
+        // 2. Arma Equipada e Munição
+        const wDef = WEAPONS[player.weaponIndex];
+        const wState = player.weapons[player.weaponIndex];
+        ctx.fillStyle = wDef.color;
+        ctx.fillText(wDef.shortName, 8, 26);
+        ctx.fillStyle = '#ffffff';
+        const ammoStr = wDef.infinite ? `${wState.mag}/∞` : `${wState.mag}/${wState.reserve}`;
+        ctx.fillText(ammoStr, 76, 26);
+
+        // Indicador dos 4 Slots de Armas (Desbloqueadas vs Bloqueadas)
+        for (let i = 0; i < WEAPONS.length; i++) {
+            const slotX = 8 + i * 24;
+            const slotY = 31;
+            const unlocked = player.weapons[i].unlocked;
+            ctx.fillStyle = (i === player.weaponIndex) ? WEAPONS[i].color : (unlocked ? '#4a5568' : '#1a1c2c');
+            ctx.fillRect(slotX, slotY, 20, 7);
+            ctx.fillStyle = unlocked ? '#000' : '#4a5568';
+            ctx.fillText(`${i + 1}`, slotX + 6, slotY + 7);
+        }
+
+        // 3. Fase, Sobreviventes Salvos e Pontuação (Centro)
+        const midX = Math.floor(viewWidth / 2);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#73eff7';
+        ctx.fillText(`FASE ${currentStageNum}/2`, midX, 12);
+        ctx.fillStyle = '#38b764';
+        ctx.fillText(`SALVOS:${stats.rescued}/${stats.totalSurvivors}`, midX, 24);
+        ctx.fillStyle = '#ffcd75';
+        ctx.fillText(`PTS:${stats.score}`, midX, 36);
+
+        // 4. Mini-Radar Circular (Direita)
+        const radarR = 15;
+        const radarX = viewWidth - 68;
+        const radarY = 20;
+
+        ctx.fillStyle = '#090d16';
+        ctx.beginPath();
+        ctx.arc(radarX, radarY, radarR, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#73eff7';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(radarX - 1, radarY - 1, 2, 2);
+
+        // Ponto Amarelo: Helicóptero
+        const hAng = Math.atan2(helicopter.y - player.y, helicopter.x - player.x);
+        const hDist = Math.min(radarR - 3, Math.hypot(helicopter.x - player.x, helicopter.y - player.y) / 100);
+        ctx.fillStyle = '#ffcd75';
+        ctx.fillRect(
+            Math.floor(radarX + Math.cos(hAng) * hDist - 2),
+            Math.floor(radarY + Math.sin(hAng) * hDist - 2),
+            4, 4
+        );
+
+        // Pontos Ciano: Sobreviventes
+        ctx.fillStyle = '#73eff7';
+        for (const s of survivors) {
+            if (s.rescued) continue;
+            const sAng = Math.atan2(s.y - player.y, s.x - player.x);
+            const sDist = Math.min(radarR - 3, Math.hypot(s.x - player.x, s.y - player.y) / 100);
+            ctx.fillRect(
+                Math.floor(radarX + Math.cos(sAng) * sDist - 1),
+                Math.floor(radarY + Math.sin(sAng) * sDist - 1),
+                2, 2
+            );
+        }
+
+        // Pontos Laranja: Caixas de Armas não descobertas
+        ctx.fillStyle = '#f77622';
+        for (const p of pickups) {
+            if (!p.type.startsWith('crate_')) continue;
+            const cAng = Math.atan2(p.y - player.y, p.x - player.x);
+            const cDist = Math.min(radarR - 3, Math.hypot(p.x - player.x, p.y - player.y) / 100);
+            ctx.fillRect(
+                Math.floor(radarX + Math.cos(cAng) * cDist - 1),
+                Math.floor(radarY + Math.sin(cAng) * cDist - 1),
+                2, 2
+            );
+        }
+
+        // Indicador de borda apontando para o Helicóptero
+        const screenHeliX = helicopter.x - camera.x;
+        const screenHeliY = helicopter.y - camera.y;
+        if (screenHeliX < 0 || screenHeliX > viewWidth || screenHeliY < hudH || screenHeliY > viewHeight) {
+            const margin = 22;
+            const indX = Math.max(margin, Math.min(viewWidth - margin, screenHeliX));
+            const indY = Math.max(hudH + margin, Math.min(viewHeight - margin, screenHeliY));
+            ctx.fillStyle = '#ffcd75';
+            ctx.fillRect(indX - 5, indY - 5, 10, 10);
+            ctx.fillStyle = '#000';
+            ctx.fillText('H', indX, indY + 3);
+        }
+    }
+
+    // --- 12. TELAS E FLUXO DAS 2 FASES ---
+    function hideAllOverlays() {
+        ['startScreen', 'stageClearScreen', 'gameOverScreen', 'victoryScreen'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.classList.add('hidden');
+                el.style.display = 'none';
+            }
+        });
+    }
+
+    function showOverlay(id) {
+        hideAllOverlays();
+        const el = document.getElementById(id);
+        if (el) {
+            el.classList.remove('hidden');
+            el.style.display = 'flex';
+        }
+    }
+
+    function startGame() {
+        try {
+            hideAllOverlays();
+            generateCityMap(1, false);
+            camera.x = Math.max(0, player.x - viewWidth / 2);
+            camera.y = Math.max(0, player.y - viewHeight / 2);
+            gameState = 'PLAYING';
+            lastFrameTime = performance.now();
+        } catch (err) {
+            console.error('Erro ao iniciar fase 1:', err);
+        }
+        try {
+            sfx.init();
+            sfx.startBGM();
+        } catch (audioErr) {}
+    }
+
+    function triggerStageClear() {
+        gameState = 'STAGECLEAR';
+        try {
+            sfx.stopBGM();
+            sfx.sfxRescue();
+        } catch (e) {}
+        const rescueBonus = stats.rescued * 1000;
+        stats.score += rescueBonus;
+
+        document.getElementById('scRescued').textContent = `${stats.rescued}/${stats.totalSurvivors}`;
+        document.getElementById('scKills').textContent = stats.kills;
+        document.getElementById('scScore').textContent = stats.score;
+        showOverlay('stageClearScreen');
+    }
+
+    function startStageTwo() {
+        try {
+            hideAllOverlays();
+            generateCityMap(2, true);
+            camera.x = Math.max(0, player.x - viewWidth / 2);
+            camera.y = Math.max(0, player.y - viewHeight / 2);
+            gameState = 'PLAYING';
+            lastFrameTime = performance.now();
+        } catch (err) {
+            console.error('Erro ao iniciar fase 2:', err);
+        }
+        try {
+            sfx.init();
+            sfx.startBGM();
+        } catch (audioErr) {}
+    }
+
+    function triggerGameOver() {
+        gameState = 'GAMEOVER';
+        try { sfx.stopBGM(); } catch (e) {}
+        document.getElementById('goKills').textContent = stats.kills;
+        document.getElementById('goRescued').textContent = `${stats.rescued}/${stats.totalSurvivors}`;
+        document.getElementById('goScore').textContent = stats.score;
+        showOverlay('gameOverScreen');
+    }
+
+    function triggerVictory() {
+        gameState = 'VICTORY';
+        try {
+            sfx.stopBGM();
+            sfx.sfxRescue();
+        } catch (e) {}
+
+        const rescueBonus = stats.rescued * 1000;
+        const allSavedBonus = (stats.rescued === stats.totalSurvivors) ? 2500 : 0;
+        const totalScore = stats.score + rescueBonus + allSavedBonus;
+
+        const mins = Math.floor(stats.elapsedTime / 60).toString().padStart(2, '0');
+        const secs = Math.floor(stats.elapsedTime % 60).toString().padStart(2, '0');
+
+        let rank = 'C';
+        const rescueRatio = stats.rescued / Math.max(1, stats.totalSurvivors);
+        if (rescueRatio === 1 && stats.elapsedTime < 300) rank = 'S';
+        else if (rescueRatio >= 0.75) rank = 'A';
+        else if (rescueRatio >= 0.4) rank = 'B';
+
+        document.getElementById('vicRescued').textContent = `${stats.rescued}/${stats.totalSurvivors}`;
+        document.getElementById('vicKills').textContent = stats.kills;
+        document.getElementById('vicTime').textContent = `${mins}:${secs}`;
+        document.getElementById('vicBonus').textContent = `+${rescueBonus + allSavedBonus}`;
+        document.getElementById('vicScore').textContent = totalScore;
+        document.getElementById('vicRank').textContent = rank;
+
+        showOverlay('victoryScreen');
+    }
+
+    // Expor funções globais e vincular múltiplos eventos (click, pointerup, touchend)
+    window.startGameSafe = startGame;
+    window.startStageTwoSafe = startStageTwo;
+
+    function bindActionButton(id, handler) {
+        const btn = document.getElementById(id);
+        if (!btn) return;
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handler();
+        });
+        btn.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handler();
+        }, { passive: false });
+    }
+
+    // Eventos dos Botões da UI
+    document.querySelectorAll('.diff-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('snes-btn-active'));
+            btn.classList.add('snes-btn-active');
+            currentDiff = btn.dataset.diff;
+            try {
+                sfx.init();
+                sfx.sfxPickup();
+            } catch (e) {}
+        });
+    });
+
+    bindActionButton('btnStart', startGame);
+    bindActionButton('btnNextStage', startStageTwo);
+    bindActionButton('btnRetry', startGame);
+    bindActionButton('btnPlayAgain', startGame);
+
+    document.getElementById('btnMute').addEventListener('click', () => {
+        try { sfx.init(); } catch (e) {}
+        const isMuted = sfx.toggleMute();
+        document.getElementById('muteIcon').textContent = isMuted ? '🔇' : '🔊';
+        document.getElementById('muteText').textContent = isMuted ? 'MUDO' : 'SOM ON';
+    });
+
+    // --- 13. LOOP PRINCIPAL ---
+    let animationLoopStarted = false;
+    function gameLoop(timestamp) {
+        if (!lastFrameTime) lastFrameTime = timestamp;
+        const dt = Math.min(0.05, Math.max(0.001, (timestamp - lastFrameTime) / 1000));
+        lastFrameTime = timestamp;
+
+        update(dt);
+        draw();
+
+        requestAnimationFrame(gameLoop);
+    }
+
+    function initPreviewScene() {
+        try {
+            generateCityMap(1, false);
+            camera.x = 120;
+            camera.y = STAGES[1].worldSize - 520;
+        } catch (e) {
+            console.error(e);
+        }
+        if (!animationLoopStarted) {
+            animationLoopStarted = true;
+            requestAnimationFrame(gameLoop);
+        }
+    }
+
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        initPreviewScene();
+    } else {
+        window.addEventListener('DOMContentLoaded', initPreviewScene);
+    }
+    window.onload = initPreviewScene;
+    </script>
+</body>
+</html>

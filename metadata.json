@@ -1,0 +1,6 @@
+{
+  "name": "Zona Morta 16-Bit: Operação Resgate",
+  "description": "Jogo de ação e resgate top-down 16-bit estilo SNES em cidade sob tempestade, com prédios exploráveis, travessia de ponte e fuga de helicóptero no hospital.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
